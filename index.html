@@ -802,6 +802,16 @@
         letter-spacing:.04em;
       }
     }
+
+    .section-title{font-size:1rem;font-weight:900;letter-spacing:.01em;margin-bottom:8px;color:var(--text)}
+    .survey-grid,.breakdown-grid{display:grid;gap:12px;grid-template-columns:1fr}
+    .info-card,.break-card{background:rgba(255,255,255,.52);border:1px solid var(--line);border-radius:18px;padding:12px;min-width:0}
+    body.ringmode .info-card, body.ringmode .break-card{background:rgba(255,255,255,.04)}
+    .info-title{font-weight:900;margin-bottom:6px;color:var(--text)}
+    .break-card span{display:block;color:var(--muted);font-size:.88rem;margin-bottom:4px}
+    .break-card strong{font-size:1.05rem;color:var(--text)}
+    @media(min-width:760px){.survey-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.breakdown-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
   </style>
 </head>
 <body>
@@ -882,9 +892,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.3.1';
-    const BUILD_DATE = '2026-03-28n';
-    const STORAGE_KEY = 'macroLegendState_v130';
+    const APP_VERSION = 'v1.4.0';
+    const BUILD_DATE = '2026-03-28o';
+    const STORAGE_KEY = 'macroLegendState_v140';
 
     const lotrQuotes = [
       "Even the smallest person can change the course of the future.",
@@ -949,6 +959,13 @@ const COMMON_FOOD_LIBRARY = [
         goalWeight: 0,
         weeklyPace: 1
       },
+      survey: {
+        priority: 'maintain',
+        knowsBodyFat: 'no',
+        trainingDays: '3-5',
+        jobActivity: 'desk',
+        paceStyle: 'balanced'
+      },
       calcDraft: {
         formula: 'msj',
         goal: 'maintain',
@@ -970,6 +987,7 @@ const COMMON_FOOD_LIBRARY = [
       },
       mealLog: [],
       foodCache: [],
+      lastCalculation: null,
       debug: {
         entries: [],
         lastChecks: []
@@ -1025,10 +1043,12 @@ const COMMON_FOOD_LIBRARY = [
         ui: state.ui,
         goals: state.goals,
         profile: state.profile,
+        survey: state.survey,
         calcDraft: state.calcDraft,
         streak: state.streak,
         mealLog: state.mealLog,
-        foodCache: state.foodCache
+        foodCache: state.foodCache,
+        lastCalculation: state.lastCalculation
       }));
       refreshDebugPanel();
     }
@@ -1044,10 +1064,12 @@ const COMMON_FOOD_LIBRARY = [
         if(parsed && typeof parsed === 'object'){
           Object.assign(state.goals, parsed.goals || {});
           Object.assign(state.profile, parsed.profile || {});
+          Object.assign(state.survey, parsed.survey || {});
           Object.assign(state.calcDraft, parsed.calcDraft || {});
           Object.assign(state.streak, parsed.streak || {});
           state.mealLog = Array.isArray(parsed.mealLog) ? parsed.mealLog : [];
           state.foodCache = Array.isArray(parsed.foodCache) ? parsed.foodCache : [];
+          state.lastCalculation = parsed.lastCalculation || null;
           if(parsed.ui && typeof parsed.ui === 'object'){
             state.ui.theme = parsed.ui.theme === 'ring' ? 'ring' : 'light';
             state.ui.activeTab = parsed.ui.activeTab === 'prog' ? 'prog' : 'calc';
@@ -1163,21 +1185,208 @@ const COMMON_FOOD_LIBRARY = [
       refreshDebugPanel();
     }
 
+
+    function getFormulaExplanation(formula){
+      const map = {
+        msj: {
+          title: 'Mifflin-St Jeor',
+          body: 'Best default for most adults when body-fat percentage is unknown. It uses weight, height, age, and sex to estimate resting calories.',
+          evidence: 'Research reviews have found Mifflin-St Jeor among the more reliable common resting-metabolism equations.'
+        },
+        hb: {
+          title: 'Harris-Benedict',
+          body: 'A classic older equation. It is still useful as a comparison point, but it is usually not the best default when newer options are available.',
+          evidence: 'Good for comparison, but usually treated as a legacy estimate rather than the primary recommendation.'
+        },
+        katch: {
+          title: 'Katch-McArdle',
+          body: 'Best used when body-fat percentage is known and reasonably trustworthy. It estimates resting calories from lean body mass.',
+          evidence: 'Useful when body composition data is available, but weak body-fat estimates can make it less reliable in real life.'
+        }
+      };
+      return map[formula] || map.msj;
+    }
+
+    function clampSurveyRecommendation(value, allowed, fallback){
+      return allowed.includes(String(value)) ? String(value) : fallback;
+    }
+
+    function deriveRecommendationFromSurvey(){
+      const s = state.survey;
+      const priority = s.priority || 'maintain';
+      const knowsBodyFat = s.knowsBodyFat || 'no';
+      const trainingDays = s.trainingDays || '3-5';
+      const jobActivity = s.jobActivity || 'desk';
+      const paceStyle = s.paceStyle || 'balanced';
+
+      let formula = knowsBodyFat === 'yes' ? 'katch' : 'msj';
+      let activity = '1.2';
+      if(jobActivity === 'physical'){
+        activity = trainingDays === '0' ? '1.725' : '1.9';
+      }else if(jobActivity === 'mixed'){
+        if(trainingDays === '0') activity = '1.375';
+        else if(trainingDays === '1-3') activity = '1.55';
+        else if(trainingDays === '3-5') activity = '1.55';
+        else activity = '1.725';
+      }else{
+        if(trainingDays === '0') activity = '1.2';
+        else if(trainingDays === '1-3') activity = '1.375';
+        else if(trainingDays === '3-5') activity = '1.55';
+        else activity = '1.725';
+      }
+
+      let weeklyPace = '1';
+      let goalPercent = '0';
+      let proteinPerLb = '0.8';
+      if(priority === 'lose'){
+        if(paceStyle === 'easy'){ weeklyPace = '0.5'; goalPercent = '-10'; proteinPerLb = '0.9'; }
+        else if(paceStyle === 'aggressive'){ weeklyPace = '1.5'; goalPercent = '-20'; proteinPerLb = '1.0'; }
+        else { weeklyPace = '1'; goalPercent = '-15'; proteinPerLb = '0.95'; }
+      }else if(priority === 'gain'){
+        if(paceStyle === 'easy'){ weeklyPace = '0.5'; goalPercent = '5'; proteinPerLb = '0.8'; }
+        else if(paceStyle === 'aggressive'){ weeklyPace = '1.5'; goalPercent = '15'; proteinPerLb = '0.9'; }
+        else { weeklyPace = '1'; goalPercent = '10'; proteinPerLb = '0.85'; }
+      }else{
+        weeklyPace = '1'; goalPercent = '0'; proteinPerLb = '0.8';
+      }
+
+      const confidence = formula === 'katch' ? 'Medium confidence: strong if body-fat % is measured well.' : 'High confidence: solid default when body-fat % is unknown.';
+      const why = formula === 'katch'
+        ? 'Because body-fat % is available, the lean-mass-based option is worth using.'
+        : 'Because body-fat % is unknown, the safest default is Mifflin-St Jeor.';
+      return { formula, goal: priority, activity, weeklyPace, goalPercent, proteinPerLb, confidence, why };
+    }
+
+    function applySurveyRecommendation(){
+      const rec = deriveRecommendationFromSurvey();
+      state.calcDraft.formula = rec.formula;
+      state.calcDraft.goal = rec.goal;
+      state.calcDraft.activity = rec.activity;
+      state.calcDraft.weeklyPace = rec.weeklyPace;
+      state.calcDraft.goalPercent = rec.goalPercent;
+      state.calcDraft.proteinPerLb = rec.proteinPerLb;
+      persistState();
+      return rec;
+    }
+
+    function attachSurveyEvents(){
+      const ids = ['surveyPriority','surveyKnowsBodyFat','surveyTrainingDays','surveyJobActivity','surveyPaceStyle'];
+      ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        el.addEventListener('change', () => {
+          state.survey.priority = document.getElementById('surveyPriority')?.value || state.survey.priority;
+          state.survey.knowsBodyFat = document.getElementById('surveyKnowsBodyFat')?.value || state.survey.knowsBodyFat;
+          state.survey.trainingDays = document.getElementById('surveyTrainingDays')?.value || state.survey.trainingDays;
+          state.survey.jobActivity = document.getElementById('surveyJobActivity')?.value || state.survey.jobActivity;
+          state.survey.paceStyle = document.getElementById('surveyPaceStyle')?.value || state.survey.paceStyle;
+          const rec = applySurveyRecommendation();
+          logDebug('action', 'Survey recommendation applied.', rec);
+          renderCurrentTab();
+        });
+      });
+      const btn = document.getElementById('recommendSetupBtn');
+      if(btn){
+        btn.addEventListener('click', () => {
+          const rec = applySurveyRecommendation();
+          showToast('Recommended setup applied.');
+          logDebug('action', 'Recommend setup clicked.', rec);
+          renderCurrentTab();
+        });
+      }
+    }
+
+    function renderCalculationBreakdownCard(){
+      if(!state.lastCalculation) return '';
+      const c = state.lastCalculation;
+      const directionText = c.goalMode === 'lose' ? 'fat-loss target' : c.goalMode === 'gain' ? 'muscle-gain target' : 'maintenance target';
+      return `
+        <section class="panel">
+          <div class="section-title">Why these numbers?</div>
+          <div class="copy" style="margin-bottom:12px;">This app shows the estimate openly instead of hiding the math.</div>
+          <div class="breakdown-grid">
+            <div class="break-card"><span>Maintenance estimate</span><strong>${c.maintenanceCalories} kcal</strong></div>
+            <div class="break-card"><span>${directionText}</span><strong>${c.targetDailyAdjustment >= 0 ? '+' : ''}${c.targetDailyAdjustment} kcal</strong></div>
+            <div class="break-card"><span>Manual slider adjustment</span><strong>${c.manualAdjustment >= 0 ? '+' : ''}${c.manualAdjustment} kcal</strong></div>
+            <div class="break-card"><span>Final calorie target</span><strong>${c.calories} kcal</strong></div>
+          </div>
+          <div class="copy" style="margin-top:12px;">Formula used: <strong>${escapeHtml(getFormulaExplanation(c.formula).title)}</strong>. Protein was based on <strong>${c.proteinWeightBase} lb</strong> at <strong>${c.proteinPerLb.toFixed(2)} g/lb</strong>, which landed at <strong>${c.protein} g/day</strong>.</div>
+        </section>`;
+    }
+
     function renderCalculatorTab(){
       const area = document.getElementById('tabArea');
       if(!area) return;
+      const rec = deriveRecommendationFromSurvey();
+      const formulaInfo = getFormulaExplanation(state.calcDraft.formula || rec.formula);
       area.innerHTML = `
         <section class="panel">
+          <div class="section-title">Quick setup survey</div>
+          <div class="copy" style="margin-bottom:12px;">Pick what you are trying to do and the app will preselect evidence-based defaults. You can still override anything manually.</div>
+          <div class="survey-grid">
+            <div class="field">
+              <label for="surveyPriority">Main priority</label>
+              <select id="surveyPriority">
+                <option value="maintain" ${state.survey.priority === 'maintain' ? 'selected' : ''}>Maintain weight</option>
+                <option value="lose" ${state.survey.priority === 'lose' ? 'selected' : ''}>Lose fat</option>
+                <option value="gain" ${state.survey.priority === 'gain' ? 'selected' : ''}>Gain muscle</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="surveyKnowsBodyFat">Know body-fat %?</label>
+              <select id="surveyKnowsBodyFat">
+                <option value="no" ${state.survey.knowsBodyFat === 'no' ? 'selected' : ''}>No</option>
+                <option value="yes" ${state.survey.knowsBodyFat === 'yes' ? 'selected' : ''}>Yes</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="surveyTrainingDays">Training days / week</label>
+              <select id="surveyTrainingDays">
+                <option value="0" ${state.survey.trainingDays === '0' ? 'selected' : ''}>0</option>
+                <option value="1-3" ${state.survey.trainingDays === '1-3' ? 'selected' : ''}>1–3</option>
+                <option value="3-5" ${state.survey.trainingDays === '3-5' ? 'selected' : ''}>3–5</option>
+                <option value="6-7" ${state.survey.trainingDays === '6-7' ? 'selected' : ''}>6–7</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="surveyJobActivity">Day-to-day activity</label>
+              <select id="surveyJobActivity">
+                <option value="desk" ${state.survey.jobActivity === 'desk' ? 'selected' : ''}>Mostly desk / low movement</option>
+                <option value="mixed" ${state.survey.jobActivity === 'mixed' ? 'selected' : ''}>Mixed / on feet some</option>
+                <option value="physical" ${state.survey.jobActivity === 'physical' ? 'selected' : ''}>Physical job / lots of movement</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="surveyPaceStyle">Recommended pace</label>
+              <select id="surveyPaceStyle">
+                <option value="easy" ${state.survey.paceStyle === 'easy' ? 'selected' : ''}>Easy / easier to sustain</option>
+                <option value="balanced" ${state.survey.paceStyle === 'balanced' ? 'selected' : ''}>Balanced</option>
+                <option value="aggressive" ${state.survey.paceStyle === 'aggressive' ? 'selected' : ''}>Aggressive</option>
+              </select>
+            </div>
+          </div>
+          <div class="button-row" style="margin-top:12px;">
+            <button class="primary-btn" id="recommendSetupBtn" type="button">Recommend My Setup</button>
+          </div>
+          <div class="info-card" style="margin-top:12px;">
+            <div class="info-title">Recommended right now</div>
+            <div class="copy"><strong>${escapeHtml(getFormulaExplanation(rec.formula).title)}</strong> · Activity <strong>${escapeHtml(rec.activity)}</strong> · Pace <strong>${escapeHtml(rec.weeklyPace)} lb/week</strong> · Protein <strong>${escapeHtml(rec.proteinPerLb)} g/lb</strong></div>
+            <div class="copy" style="margin-top:6px;">${escapeHtml(rec.why)} ${escapeHtml(rec.confidence)}</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-title">Calculator</div>
           <div class="copy" style="margin-bottom:12px;">
-            Pick a formula, activity level, goal, and optional target weight. Goal weight and pace now help drive the calorie math, while the slider acts like a manual adjustment on top.
+            Pick a formula, activity level, goal, and optional target weight. Goal weight and pace help drive the calorie math, while the slider acts like a manual adjustment on top.
           </div>
           <form id="calcForm" class="calc-grid">
             <div class="field">
               <label for="inputFormula">Formula</label>
               <select id="inputFormula">
-                <option value="msj" ${state.calcDraft.formula === 'msj' ? 'selected' : ''}>Mifflin-St Jeor (modern)</option>
-                <option value="hb" ${state.calcDraft.formula === 'hb' ? 'selected' : ''}>Harris-Benedict (legacy)</option>
-                <option value="katch" ${state.calcDraft.formula === 'katch' ? 'selected' : ''}>Katch-McArdle (needs body fat %)</option>
+                <option value="msj" ${state.calcDraft.formula === 'msj' ? 'selected' : ''}>Mifflin-St Jeor (recommended default)</option>
+                <option value="hb" ${state.calcDraft.formula === 'hb' ? 'selected' : ''}>Harris-Benedict (older / legacy)</option>
+                <option value="katch" ${state.calcDraft.formula === 'katch' ? 'selected' : ''}>Katch-McArdle (best if body-fat % is known)</option>
               </select>
             </div>
             <div class="field">
@@ -1205,7 +1414,7 @@ const COMMON_FOOD_LIBRARY = [
               <input id="inputAge" type="number" inputmode="numeric" min="8" max="99" placeholder="30" value="${state.calcDraft.age || ''}">
             </div>
             <div class="field">
-              <label for="inputGender">Gender</label>
+              <label for="inputGender">Sex used by equation</label>
               <select id="inputGender">
                 <option value="male" ${state.calcDraft.gender === 'male' ? 'selected' : ''}>Male</option>
                 <option value="female" ${state.calcDraft.gender === 'female' ? 'selected' : ''}>Female</option>
@@ -1246,11 +1455,19 @@ const COMMON_FOOD_LIBRARY = [
               <button class="ghost-btn" id="goToProgressionBtn" type="button">Go to Progression</button>
             </div>
           </form>
+          <div class="info-card" style="margin-top:12px;">
+            <div class="info-title">Formula facts</div>
+            <div class="copy"><strong>${escapeHtml(formulaInfo.title)}</strong>: ${escapeHtml(formulaInfo.body)}</div>
+            <div class="copy" style="margin-top:6px;">${escapeHtml(formulaInfo.evidence)}</div>
+          </div>
         </section>
 
+        ${renderCalculationBreakdownCard()}
+
         <section class="panel">
+          <div class="section-title">Manual goal override</div>
           <div class="copy" style="margin-bottom:12px;">
-            Manual goal override. Handy if you already know the macros you want.
+            Handy if you already know the macros you want.
           </div>
           <div class="calc-grid">
             <div class="field">
@@ -1279,8 +1496,6 @@ const COMMON_FOOD_LIBRARY = [
 
       const formulaSel = document.getElementById('inputFormula');
       const goalSel = document.getElementById('inputGoal');
-      const goalWeightEl = document.getElementById('inputGoalWeight');
-      const weeklyPaceEl = document.getElementById('inputWeeklyPace');
       const goalPercent = document.getElementById('goalPercent');
       const goalPercentLabel = document.getElementById('goalPercentLabel');
       const proteinPerLb = document.getElementById('proteinPerLb');
@@ -1311,6 +1526,7 @@ const COMMON_FOOD_LIBRARY = [
       updateGoalPercentLabel();
       updateProteinLabel();
       attachCalcDraftPersistence();
+      attachSurveyEvents();
 
       document.getElementById('calcForm').addEventListener('submit', handleMacroCalculation);
       document.getElementById('manualGoalsBtn').addEventListener('click', saveManualGoals);
@@ -1400,6 +1616,22 @@ const COMMON_FOOD_LIBRARY = [
       state.calcDraft.weight = String(weightLb);
       state.calcDraft.goalWeight = goalWeightLb ? String(goalWeightLb) : '';
       state.calcDraft.weeklyPace = String(weeklyPace);
+      state.lastCalculation = {
+        formula,
+        calories,
+        protein,
+        carbs,
+        fat,
+        maintenanceCalories: Math.round(maintenanceCalories),
+        targetDailyAdjustment: Math.round(targetDailyAdjustment),
+        manualAdjustment: Math.round(manualAdjustment),
+        goalWeightLb,
+        weeklyPace,
+        goalWeightDelta,
+        goalMode,
+        proteinWeightBase,
+        proteinPerLb
+      };
       persistState();
       showToast(`Goals updated (${formula.toUpperCase()})`);
       logDebug('action', 'Macro goals recalculated.', { formula, calories, protein, carbs, fat, maintenanceCalories: Math.round(maintenanceCalories), targetDailyAdjustment: Math.round(targetDailyAdjustment), manualAdjustment: Math.round(manualAdjustment), goalWeightLb, weeklyPace, goalWeightDelta, goalMode });
@@ -1421,6 +1653,7 @@ const COMMON_FOOD_LIBRARY = [
       state.goals = { calories:2000, protein:150, carbs:200, fat:70 };
       state.profile.goalWeight = 0;
       state.profile.weeklyPace = 1;
+      state.lastCalculation = null;
       persistState();
       showToast('Goals reset to defaults.');
       logDebug('action', 'Goals reset to defaults.');
