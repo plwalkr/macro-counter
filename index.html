@@ -178,7 +178,7 @@
     }
     .tab-row{
       display:grid;
-      grid-template-columns:1fr 1fr;
+      grid-template-columns:repeat(3,1fr);
       gap:8px;
       padding:0 16px 14px;
     }
@@ -468,7 +468,7 @@
     .meal-meta-grid{
       display:grid;
       gap:12px;
-      grid-template-columns:1fr 1fr;
+      grid-template-columns:repeat(3,1fr);
     }
     .meal-name-wrap{
       position:relative;
@@ -671,7 +671,7 @@
     .debug-actions{
       display:grid;
       gap:10px;
-      grid-template-columns:1fr 1fr;
+      grid-template-columns:repeat(3,1fr);
       margin-top:10px;
     }
     .status-good{ color:var(--accent-2); font-weight:900; }
@@ -773,7 +773,7 @@
       .meal-form{ grid-template-columns:repeat(2, minmax(0,1fr)); }
       .meal-name-wrap{ grid-column:1 / -1; }
       .meal-meta-grid{ grid-column:1 / -1; grid-template-columns:repeat(4, minmax(0,1fr)); }
-      .button-row{ grid-column:1 / -1; grid-template-columns:1fr 1fr; }
+      .button-row{ grid-column:1 / -1; grid-template-columns:repeat(3,1fr); }
       .summary-grid{ grid-template-columns:repeat(4, minmax(0,1fr)); }
       .debug-grid{ grid-template-columns:repeat(2, minmax(0,1fr)); }
     }
@@ -819,18 +819,20 @@
     <header class="topbar">
       <div class="title-row">
         <div class="title-block">
-          <h1>MacroLegend <span class="version-chip" id="headerVersionChip">v1.3.0</span></h1>
+          <h1>MacroLegend <span class="version-chip" id="headerVersionChip">v1.5.0</span></h1>
           <div class="subtitle">Mobile-first macro tracking with daily totals, better sanity checks, and a real debug system.</div>
         </div>
         <div class="theme-toggle">
           <button class="theme-btn active" id="appleLightBtn" type="button">Apple Light</button>
           <button class="theme-btn" id="ringModeBtn" type="button">Ring Mode</button>
+          <button class="theme-btn" id="liftModeBtn" type="button">Lift Mode</button>
           <button class="theme-btn" id="appReloadBtn" type="button" title="Reload app">↻ Reload</button>
         </div>
       </div>
       <div class="tab-row">
         <button class="tab-btn active" id="tabCalc" type="button">Calculator</button>
         <button class="tab-btn" id="tabProg" type="button">Progression</button>
+        <button class="tab-btn" id="tabCheckin" type="button">Check-In</button>
       </div>
     </header>
 
@@ -892,9 +894,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.4.2';
-    const BUILD_DATE = '2026-03-28q';
-    const STORAGE_KEY = 'macroLegendState_v140';
+    const APP_VERSION = 'v1.5.0';
+    const BUILD_DATE = '2026-03-28r';
+    const STORAGE_KEY = 'macroLegendState_v150';
 
     const lotrQuotes = [
       "Even the smallest person can change the course of the future.",
@@ -1007,6 +1009,15 @@ const COMMON_FOOD_LIBRARY = [
       debug: {
         entries: [],
         lastChecks: []
+      },
+      checkin: {
+        mood: 3,
+        energy: 3,
+        hunger: 3,
+        sleep: '',
+        workoutDone: false,
+        notes: '',
+        lastDate: null
       }
     };
 
@@ -1235,19 +1246,22 @@ const COMMON_FOOD_LIBRARY = [
     }
 
     function applyTheme(theme){
-      state.ui.theme = theme === 'ring' ? 'ring' : 'light';
+      state.ui.theme = ['light','ring','lift'].includes(theme) ? theme : 'light';
       document.body.classList.toggle('ringmode', state.ui.theme === 'ring');
+      document.body.classList.toggle('liftmode', state.ui.theme === 'lift');
       document.getElementById('appleLightBtn').classList.toggle('active', state.ui.theme === 'light');
       document.getElementById('ringModeBtn').classList.toggle('active', state.ui.theme === 'ring');
+      document.getElementById('liftModeBtn').classList.toggle('active', state.ui.theme === 'lift');
       logDebug('action', 'Theme changed.', { theme: state.ui.theme });
       persistState();
       renderCurrentTab();
     }
 
     function setActiveTab(tab){
-      state.ui.activeTab = tab === 'prog' ? 'prog' : 'calc';
+      state.ui.activeTab = ['calc','prog','checkin'].includes(tab) ? tab : 'calc';
       document.getElementById('tabCalc').classList.toggle('active', state.ui.activeTab === 'calc');
       document.getElementById('tabProg').classList.toggle('active', state.ui.activeTab === 'prog');
+      document.getElementById('tabCheckin').classList.toggle('active', state.ui.activeTab === 'checkin');
       logDebug('action', 'Tab changed.', { tab: state.ui.activeTab });
       persistState();
       renderCurrentTab();
@@ -1256,8 +1270,10 @@ const COMMON_FOOD_LIBRARY = [
     function renderCurrentTab(){
       if(state.ui.activeTab === 'calc'){
         renderCalculatorTab();
-      }else{
+      }else if(state.ui.activeTab === 'prog'){
         renderProgressionTab();
+      }else{
+        renderCheckinTab();
       }
       refreshDebugPanel();
     }
@@ -1481,7 +1497,7 @@ const COMMON_FOOD_LIBRARY = [
             </div>
             <div class="field">
               <label for="inputHeightFeet">Height</label>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
                 <input id="inputHeightFeet" type="number" inputmode="numeric" min="0" max="8" placeholder="ft" value="${getHeightDraftParts().feet}">
                 <input id="inputHeightInches" type="number" inputmode="numeric" min="0" max="11" placeholder="in" value="${getHeightDraftParts().inches}">
               </div>
@@ -1743,6 +1759,31 @@ const COMMON_FOOD_LIBRARY = [
       renderCurrentTab();
     }
 
+
+    function currentCheckinDone(){
+      return state.checkin.lastDate === state.ui.selectedDate;
+    }
+
+    function checkinSummaryText(){
+      if(!currentCheckinDone()) return 'No check-in yet for this day.';
+      const c = state.checkin;
+      const parts = [`Mood ${c.mood}/5`, `Energy ${c.energy}/5`, `Hunger ${c.hunger}/5`];
+      if(c.workoutDone) parts.push('Workout logged');
+      if(c.sleep) parts.push(`${c.sleep}h sleep`);
+      return parts.join(' · ');
+    }
+
+    function nextBestAction(){
+      const totals = totalsForDate(state.ui.selectedDate);
+      if(!currentCheckinDone()) return 'Complete your daily check-in to track hunger, energy, and mood.';
+      const proteinLeft = Math.max(0, (state.goals.protein||0) - totals.protein);
+      const calorieLeft = Math.max(0, (state.goals.calories||0) - totals.calories);
+      if(totals.calories === 0) return 'Start the day by logging your first meal.';
+      if(proteinLeft >= 25) return `You still have about ${proteinLeft}g of protein left today.`;
+      if(calorieLeft >= 400) return `You still have about ${calorieLeft} calories left today.`;
+      return 'Nice work. Review your day, save notes, or export your log.';
+    }
+
     function renderProgressionTab(){
       const area = document.getElementById('tabArea');
       if(!area) return;
@@ -1764,6 +1805,17 @@ const COMMON_FOOD_LIBRARY = [
           <div class="copy" style="margin-top:10px; text-align:center;">
             Tracking for <strong>${formatDateReadable(state.ui.selectedDate)}</strong>
           </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-title">Today at a glance</div>
+          <div class="today-grid">
+            <div class="today-card"><div class="today-label">Calories left</div><div class="today-big">${Math.max(0, calorieDelta)}</div><div class="copy">${calorieDelta >= 0 ? 'remaining' : Math.abs(calorieDelta)+' over'}</div></div>
+            <div class="today-card"><div class="today-label">Protein left</div><div class="today-big">${Math.max(0, (state.goals.protein||0) - totals.protein)}g</div><div class="copy">toward today’s goal</div></div>
+            <div class="today-card"><div class="today-label">Meals logged</div><div class="today-big">${dayMeals.length}</div><div class="copy">for ${formatDateReadable(state.ui.selectedDate)}</div></div>
+            <div class="today-card"><div class="today-label">Check-in</div><div class="today-big">${currentCheckinDone() ? 'Done' : 'Open'}</div><div class="copy">${checkinSummaryText()}</div></div>
+          </div>
+          <div class="next-action">${nextBestAction()}</div>
         </section>
 
         <section class="panel">
@@ -1879,6 +1931,76 @@ const COMMON_FOOD_LIBRARY = [
       document.getElementById('printBtn').addEventListener('click', handlePrintAction);
       attachAutocompleteEvents();
       attachMealTableActions();
+    }
+
+
+    function renderCheckinTab(){
+      const area = document.getElementById('tabArea');
+      if(!area) return;
+      const c = state.checkin || {};
+      area.innerHTML = `
+        <section class="panel">
+          <div class="section-title">Daily check-in</div>
+          <div class="copy" style="margin-bottom:12px;">A quick note-and-reflect page to keep the app useful between meals.</div>
+          <form id="checkinForm">
+            <div class="checkin-grid">
+              <div class="field">
+                <label for="checkinMood">Mood</label>
+                <input id="checkinMood" type="range" min="1" max="5" step="1" value="${c.mood || 3}">
+                <div class="slider-readout">${c.mood || 3} / 5</div>
+              </div>
+              <div class="field">
+                <label for="checkinEnergy">Energy</label>
+                <input id="checkinEnergy" type="range" min="1" max="5" step="1" value="${c.energy || 3}">
+                <div class="slider-readout">${c.energy || 3} / 5</div>
+              </div>
+              <div class="field">
+                <label for="checkinHunger">Hunger</label>
+                <input id="checkinHunger" type="range" min="1" max="5" step="1" value="${c.hunger || 3}">
+                <div class="slider-readout">${c.hunger || 3} / 5</div>
+              </div>
+              <div class="field">
+                <label for="checkinSleep">Sleep (hours)</label>
+                <input id="checkinSleep" type="number" min="0" max="24" step="0.5" value="${c.sleep || ''}" placeholder="7.5">
+              </div>
+              <div class="field">
+                <label for="checkinWorkout">Workout done today?</label>
+                <select id="checkinWorkout"><option value="no" ${c.workoutDone ? '' : 'selected'}>No</option><option value="yes" ${c.workoutDone ? 'selected' : ''}>Yes</option></select>
+              </div>
+            </div>
+            <div class="field" style="margin-top:12px;">
+              <label for="checkinNotes">Notes</label>
+              <textarea id="checkinNotes" rows="5" placeholder="How did today feel? Cravings, stress, hunger, training, anything useful for tomorrow.">${c.notes || ''}</textarea>
+            </div>
+            <div class="button-row" style="margin-top:12px;">
+              <button class="primary-btn" type="submit">Save check-in</button>
+              <button class="ghost-btn" id="backToProgressBtn" type="button">Back to Progression</button>
+            </div>
+          </form>
+        </section>
+      `;
+      ['checkinMood','checkinEnergy','checkinHunger'].forEach(id => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        el.addEventListener('input', () => { el.nextElementSibling.textContent = `${el.value} / 5`; });
+      });
+      document.getElementById('checkinForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        state.checkin = {
+          mood: Number(document.getElementById('checkinMood').value) || 3,
+          energy: Number(document.getElementById('checkinEnergy').value) || 3,
+          hunger: Number(document.getElementById('checkinHunger').value) || 3,
+          sleep: document.getElementById('checkinSleep').value,
+          workoutDone: document.getElementById('checkinWorkout').value === 'yes',
+          notes: document.getElementById('checkinNotes').value.trim(),
+          lastDate: state.ui.selectedDate
+        };
+        persistState();
+        logDebug('action', 'Daily check-in saved.', { date: state.ui.selectedDate });
+        showToast('Check-in saved.');
+        setActiveTab('prog');
+      });
+      document.getElementById('backToProgressBtn').addEventListener('click', () => setActiveTab('prog'));
     }
 
     function renderBarCard(name, current, goal, fillClass){
@@ -3064,8 +3186,11 @@ area.addEventListener('click', (event) => {
     function wireGlobalEvents(){
       document.getElementById('appleLightBtn').addEventListener('click', () => applyTheme('light'));
       document.getElementById('ringModeBtn').addEventListener('click', () => applyTheme('ring'));
+      document.getElementById('liftModeBtn').addEventListener('click', () => applyTheme('lift'));
       document.getElementById('tabCalc').addEventListener('click', () => setActiveTab('calc'));
       document.getElementById('tabProg').addEventListener('click', () => setActiveTab('prog'));
+      document.getElementById('tabCheckin').addEventListener('click', () => setActiveTab('checkin'));
+      document.getElementById('appReloadBtn').addEventListener('click', () => window.location.reload());
       document.getElementById('debugFab').addEventListener('click', openDebugPanel);
       document.getElementById('debugCloseBtn').addEventListener('click', closeDebugPanel);
       document.getElementById('debugBackdrop').addEventListener('click', (event) => {
