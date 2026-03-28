@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -864,8 +865,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.1.9';
-    const BUILD_DATE = '2026-03-28g';
+    const APP_VERSION = 'v1.2.0';
+    const BUILD_DATE = '2026-03-28h';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
@@ -2042,43 +2043,73 @@
       handleBarcodeCode(code);
     }
 
-    function handleBarcodeCode(code){
+    async function handleBarcodeCode(code){
       showToast(`Scanned: ${code}`);
       logDebug('action', 'Barcode detected.', { code });
 
-      fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(code)}.json`)
-        .then(r => r.json())
-        .then(info => {
-          if(info.status === 1 && info.product && info.product.nutriments){
-            const n = info.product.nutriments || {};
-            const name = info.product.product_name || info.product.brands || 'Barcode Food';
-            let calories = Math.round(n['energy-kcal_serving'] || n['energy-kcal_100g'] || 0);
-            if(!calories && n['energy_100g']) calories = Math.round(Number(n['energy_100g']) / 4.184);
-            const entry = {
-              id: `meal_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
-              name,
-              calories,
-              protein: Math.round(n['proteins_serving'] || n['proteins_100g'] || 0),
-              carbs: Math.round(n['carbohydrates_serving'] || n['carbohydrates_100g'] || 0),
-              fat: Math.round(n['fat_serving'] || n['fat_100g'] || 0),
-              date: Date.now(),
-              dateKey: state.ui.selectedDate
-            };
-            state.mealLog.push(entry);
-            updateStreakAfterLogging(state.ui.selectedDate);
-            persistState();
-            showToast(`Added ${name}`);
-            logDebug('action', 'Barcode food added.', entry);
-            renderCurrentTab();
-          }else{
-            showToast('No food info found.');
-            logDebug('warn', 'Open Food Facts returned no product.', { code });
-          }
-        })
-        .catch(err => {
-          showToast('Food lookup failed.');
-          logDebug('error', 'Barcode lookup failed.', { code, error: String(err) });
-        });
+      try{
+        const product = await lookupBarcodeProduct(code);
+        if(!product){
+          showToast('No food info found.');
+          logDebug('warn', 'Open Food Facts returned no product.', { code });
+          return;
+        }
+
+        if(state.ui.activeTab !== 'prog'){
+          state.ui.activeTab = 'prog';
+          renderCurrentTab();
+        }
+
+        fillMealFormFromBarcode(product, code);
+        showToast(`Filled ${product.name}`);
+        logDebug('action', 'Barcode food auto-filled into meal form.', { code, product });
+      }catch(err){
+        showToast('Food lookup failed.');
+        logDebug('error', 'Barcode lookup failed.', { code, error: String(err) });
+      }
+    }
+
+    async function lookupBarcodeProduct(code){
+      const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(code)}.json`, { cache:'no-store' });
+      const info = await response.json();
+      if(!(info && info.status === 1 && info.product && info.product.nutriments)){
+        return null;
+      }
+      const n = info.product.nutriments || {};
+      let calories = Math.round(n['energy-kcal_serving'] || n['energy-kcal_100g'] || 0);
+      if(!calories && n['energy_100g']) calories = Math.round(Number(n['energy_100g']) / 4.184);
+      return {
+        name: info.product.product_name || info.product.brands || 'Barcode Food',
+        calories,
+        protein: Math.round(n['proteins_serving'] || n['proteins_100g'] || 0),
+        carbs: Math.round(n['carbohydrates_serving'] || n['carbohydrates_100g'] || 0),
+        fat: Math.round(n['fat_serving'] || n['fat_100g'] || 0)
+      };
+    }
+
+    function fillMealFormFromBarcode(product, code){
+      const nameEl = document.getElementById('mealName');
+      const calEl = document.getElementById('mealCalories');
+      const proteinEl = document.getElementById('mealProtein');
+      const carbsEl = document.getElementById('mealCarbs');
+      const fatEl = document.getElementById('mealFat');
+      if(!(nameEl && calEl && proteinEl && carbsEl && fatEl)){
+        logDebug('warn', 'Meal form missing during barcode autofill.', { code });
+        return;
+      }
+      nameEl.value = product.name || '';
+      calEl.value = Number.isFinite(product.calories) ? product.calories : '';
+      proteinEl.value = Number.isFinite(product.protein) ? product.protein : '';
+      carbsEl.value = Number.isFinite(product.carbs) ? product.carbs : '';
+      fatEl.value = Number.isFinite(product.fat) ? product.fat : '';
+      nameEl.dispatchEvent(new Event('input', { bubbles:true }));
+      const list = document.getElementById('autocompleteList');
+      if(list) list.style.display = 'none';
+      const addBtn = document.querySelector('#addMealForm .primary-btn');
+      if(addBtn){
+        addBtn.focus({ preventScroll:true });
+      }
+      nameEl.scrollIntoView({ behavior:'smooth', block:'center' });
     }
 
     function attachAutocompleteEvents(){
