@@ -798,11 +798,12 @@
   <div id="barcodeOverlay" aria-hidden="true"></div>
   <button id="barcodeCloseBtn" type="button" aria-label="Close scan">✕</button>
   <button class="ghost-btn" id="barcodeCancelBtn" type="button">Cancel Scan</button>
+  <input id="barcodePhotoInput" type="file" accept="image/*" capture="environment" style="display:none" />
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.1.3';
-    const BUILD_DATE = '2026-03-28c';
+    const APP_VERSION = 'v1.1.4';
+    const BUILD_DATE = '2026-03-28d';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
@@ -1576,11 +1577,18 @@
     }
 
     
+
     async function scanBarcode(){
       if(state.ui.scanning) return;
+      if(isLikelyIPhoneSafari()){
+        logDebug('info', 'Using photo barcode flow for iPhone Safari.');
+        launchPhotoBarcodeCapture();
+        return;
+      }
       if(!('mediaDevices' in navigator)){
         showToast('Camera not supported on this device.');
         logDebug('warn', 'Barcode scan unavailable: no mediaDevices.');
+        launchPhotoBarcodeCapture();
         return;
       }
       if(!window.isSecureContext){
@@ -1606,6 +1614,102 @@
       await scanBarcodeWithQuagga();
     }
 
+    function isLikelyIPhoneSafari(){
+      const ua = navigator.userAgent || '';
+      const isIPhone = /iPhone/i.test(ua);
+      const isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua);
+      return isIPhone && isSafari;
+    }
+
+    function launchPhotoBarcodeCapture(){
+      const input = document.getElementById('barcodePhotoInput');
+      if(!input){
+        showToast('Photo scanner input missing.');
+        logDebug('error', 'Photo barcode input missing.');
+        return;
+      }
+      try{ input.value = ''; }catch(_){ }
+      input.click();
+      showToast('Take a barcode photo in good light.');
+      logDebug('action', 'Photo barcode capture launched.');
+    }
+
+    async function handleBarcodePhotoSelection(event){
+      const file = event && event.target && event.target.files && event.target.files[0];
+      if(!file) return;
+      logDebug('action', 'Photo selected for barcode scan.', { name:file.name || 'camera_image', size:file.size || 0, type:file.type || '' });
+      showToast('Scanning photo...');
+      try{
+        const code = await decodeBarcodeFromFile(file);
+        if(code){
+          handleBarcodeCode(code);
+          return;
+        }
+        showToast('No barcode found. Try a closer, sharper photo.');
+        logDebug('warn', 'No barcode decoded from selected photo.');
+      }catch(err){
+        showToast('Photo scan failed.');
+        logDebug('error', 'Photo barcode decode failed.', { error: String(err) });
+      }finally{
+        try{ event.target.value = ''; }catch(_){ }
+      }
+    }
+
+    async function decodeBarcodeFromFile(file){
+      const objectUrl = URL.createObjectURL(file);
+      try{
+        if('BarcodeDetector' in window){
+          try{
+            const supported = await BarcodeDetector.getSupportedFormats();
+            const wanted = ['ean_13','ean_8','upc_a','upc_e','code_128'];
+            const formats = wanted.filter(f => supported.includes(f));
+            if(formats.length){
+              const bitmap = await createImageBitmap(file);
+              try{
+                const detector = new BarcodeDetector({ formats });
+                const barcodes = await detector.detect(bitmap);
+                if(barcodes && barcodes.length){
+                  const code = (barcodes[0].rawValue || '').trim();
+                  if(code){
+                    logDebug('action', 'Barcode decoded from photo with native detector.', { code });
+                    return code;
+                  }
+                }
+              } finally {
+                if(bitmap && bitmap.close) bitmap.close();
+              }
+            }
+          }catch(err){
+            logDebug('warn', 'Native photo barcode decode failed. Falling back to Quagga.', { error: String(err) });
+          }
+        }
+
+        return await new Promise((resolve, reject) => {
+          if(!window.Quagga || !Quagga.decodeSingle){
+            reject(new Error('Quagga decodeSingle unavailable'));
+            return;
+          }
+          Quagga.decodeSingle({
+            src: objectUrl,
+            numOfWorkers: 0,
+            locate: true,
+            locator: { patchSize:'medium', halfSample:false },
+            decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'code_128_reader'] }
+          }, (result) => {
+            const code = result && result.codeResult && result.codeResult.code;
+            if(code){
+              logDebug('action', 'Barcode decoded from photo with Quagga.', { code });
+              resolve(code);
+            }else{
+              resolve('');
+            }
+          });
+        });
+      } finally {
+        try{ URL.revokeObjectURL(objectUrl); }catch(_){ }
+      }
+    }
+
     async function scanBarcodeNative(formats){
       const cancelBtn = document.getElementById('barcodeCancelBtn');
       const closeBtn = document.getElementById('barcodeCloseBtn');
@@ -1624,8 +1728,7 @@
             facingMode: { ideal:'environment' },
             width: { ideal: 1920 },
             height: { ideal: 1080 },
-            focusMode: 'continuous',
-            advanced: [{ focusMode:'continuous' }, { zoom: 2 }]
+            advanced: [{ focusMode:'continuous' }]
           },
           audio:false
         });
@@ -1768,6 +1871,10 @@
       const code = data && data.codeResult && data.codeResult.code;
       if(!code) return;
       stopBarcodeScan();
+      handleBarcodeCode(code);
+    }
+
+    function handleBarcodeCode(code){
       showToast(`Scanned: ${code}`);
       logDebug('action', 'Barcode detected.', { code });
 
@@ -1843,6 +1950,8 @@
             })
             .catch(err => {
               logDebug('warn', 'Autocomplete lookup failed.', { error: String(err) });
+              showToast('Food search is unavailable right now.');
+              autocompleteResults = [];
               if(list) list.style.display = 'none';
             });
         }, 180);
@@ -2085,6 +2194,7 @@
       document.getElementById('clearDebugBtn').addEventListener('click', clearDebugLog);
       document.getElementById('barcodeCancelBtn').addEventListener('click', () => stopBarcodeScan('cancel_button'));
       document.getElementById('barcodeCloseBtn').addEventListener('click', () => stopBarcodeScan('close_button'));
+      document.getElementById('barcodePhotoInput').addEventListener('change', handleBarcodePhotoSelection);
       document.getElementById('barcodeOverlay').addEventListener('click', (event) => {
         if(event.target.id === 'barcodeOverlay'){
           stopBarcodeScan('overlay_backdrop');
