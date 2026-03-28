@@ -892,8 +892,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.4.0';
-    const BUILD_DATE = '2026-03-28o';
+    const APP_VERSION = 'v1.4.1';
+    const BUILD_DATE = '2026-03-28p';
     const STORAGE_KEY = 'macroLegendState_v140';
 
     const lotrQuotes = [
@@ -971,6 +971,8 @@ const COMMON_FOOD_LIBRARY = [
         goal: 'maintain',
         weight: '',
         height: '',
+        heightFeet: '',
+        heightInches: '',
         age: '',
         gender: 'male',
         bodyFat: '',
@@ -1083,12 +1085,64 @@ const COMMON_FOOD_LIBRARY = [
     }
 
 
+    function getHeightDraftParts(){
+      const totalRaw = Number(state.calcDraft.height || 0);
+      const total = Number.isFinite(totalRaw) && totalRaw > 0 ? Math.round(totalRaw) : 0;
+      const storedFeet = String(state.calcDraft.heightFeet || '').trim();
+      const storedInches = String(state.calcDraft.heightInches || '').trim();
+      if(storedFeet || storedInches){
+        return { feet: storedFeet, inches: storedInches };
+      }
+      if(total > 0){
+        return { feet: String(Math.floor(total / 12)), inches: String(total % 12) };
+      }
+      return { feet: '', inches: '' };
+    }
+
+    function formatHeightSummary(){
+      const total = Number(state.calcDraft.height || 0);
+      if(!total) return '—';
+      const rounded = Math.round(total);
+      const feet = Math.floor(rounded / 12);
+      const inches = rounded % 12;
+      return `${feet} ft ${inches} in (${rounded} total in)`;
+    }
+
+    function syncHeightCompositeFromDom(){
+      const ftEl = document.getElementById('inputHeightFeet');
+      const inEl = document.getElementById('inputHeightInches');
+      const totalEl = document.getElementById('inputHeight');
+      const labelEl = document.getElementById('heightAutoTotal');
+      if(!ftEl || !inEl || !totalEl) return;
+      let feet = parseInt(ftEl.value || '0', 10);
+      let inches = parseInt(inEl.value || '0', 10);
+      feet = Number.isFinite(feet) && feet >= 0 ? feet : 0;
+      inches = Number.isFinite(inches) && inches >= 0 ? inches : 0;
+      if(inches > 11){
+        feet += Math.floor(inches / 12);
+        inches = inches % 12;
+        ftEl.value = feet ? String(feet) : '';
+        inEl.value = String(inches);
+      }
+      const hasAny = String(ftEl.value).trim() !== '' || String(inEl.value).trim() !== '';
+      const total = hasAny ? (feet * 12 + inches) : '';
+      totalEl.value = total === '' ? '' : String(total);
+      state.calcDraft.heightFeet = String(ftEl.value || '');
+      state.calcDraft.heightInches = String(inEl.value || '');
+      state.calcDraft.height = totalEl.value;
+      if(labelEl){
+        labelEl.textContent = total === '' ? '—' : `${feet} ft ${inches} in (${total} total in)`;
+      }
+    }
+
     function syncCalcDraftFromDom(){
       const map = {
         formula: 'inputFormula',
         goal: 'inputGoal',
         weight: 'inputWeight',
         height: 'inputHeight',
+        heightFeet: 'inputHeightFeet',
+        heightInches: 'inputHeightInches',
         age: 'inputAge',
         gender: 'inputGender',
         bodyFat: 'inputBodyFat',
@@ -1099,6 +1153,7 @@ const COMMON_FOOD_LIBRARY = [
         goalWeight: 'inputGoalWeight'
       };
       let changed = false;
+      syncHeightCompositeFromDom();
       Object.entries(map).forEach(([key, id]) => {
         const el = document.getElementById(id);
         if(!el) return;
@@ -1112,11 +1167,19 @@ const COMMON_FOOD_LIBRARY = [
     }
 
     function attachCalcDraftPersistence(){
-      const ids = ['inputFormula','inputGoal','inputWeight','inputHeight','inputAge','inputGender','inputBodyFat','inputActivity','inputWeeklyPace','goalPercent','proteinPerLb','inputGoalWeight'];
+      const ids = ['inputFormula','inputGoal','inputWeight','inputHeightFeet','inputHeightInches','inputHeight','inputAge','inputGender','inputBodyFat','inputActivity','inputWeeklyPace','goalPercent','proteinPerLb','inputGoalWeight'];
+      syncHeightCompositeFromDom();
       ids.forEach((id) => {
         const el = document.getElementById(id);
         if(!el) return;
         const handler = () => syncCalcDraftFromDom();
+        el.addEventListener('input', handler);
+        el.addEventListener('change', handler);
+      });
+      ['inputHeightFeet','inputHeightInches'].forEach((id)=>{
+        const el=document.getElementById(id);
+        if(!el) return;
+        const handler=()=>{ syncHeightCompositeFromDom(); syncCalcDraftFromDom(); };
         el.addEventListener('input', handler);
         el.addEventListener('change', handler);
       });
@@ -1271,6 +1334,7 @@ const COMMON_FOOD_LIBRARY = [
 
     function attachSurveyEvents(){
       const ids = ['surveyPriority','surveyKnowsBodyFat','surveyTrainingDays','surveyJobActivity','surveyPaceStyle'];
+      syncHeightCompositeFromDom();
       ids.forEach((id) => {
         const el = document.getElementById(id);
         if(!el) return;
@@ -1402,8 +1466,13 @@ const COMMON_FOOD_LIBRARY = [
               <input id="inputWeight" type="number" inputmode="decimal" min="70" placeholder="180" value="${state.calcDraft.weight || state.profile.currentWeight || ''}">
             </div>
             <div class="field">
-              <label for="inputHeight">Height (in)</label>
-              <input id="inputHeight" type="number" inputmode="decimal" min="48" placeholder="70" value="${state.calcDraft.height || ''}">
+              <label for="inputHeightFeet">Height</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <input id="inputHeightFeet" type="number" inputmode="numeric" min="0" max="8" placeholder="ft" value="${getHeightDraftParts().feet}">
+                <input id="inputHeightInches" type="number" inputmode="numeric" min="0" max="11" placeholder="in" value="${getHeightDraftParts().inches}">
+              </div>
+              <input id="inputHeight" type="hidden" value="${state.calcDraft.height || ''}">
+              <div class="copy" style="margin-top:6px;">Auto total: <strong id="heightAutoTotal">${formatHeightSummary()}</strong></div>
             </div>
             <div class="field">
               <label for="inputGoalWeight">Goal weight (lbs)</label>
