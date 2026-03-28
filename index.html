@@ -892,8 +892,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.4.1';
-    const BUILD_DATE = '2026-03-28p';
+    const APP_VERSION = 'v1.4.2';
+    const BUILD_DATE = '2026-03-28q';
     const STORAGE_KEY = 'macroLegendState_v140';
 
     const lotrQuotes = [
@@ -923,6 +923,20 @@
       "Stay patient and trust your journey.",
       "No pressure, no diamonds.",
       "Life is tough, but so are you."
+    ];
+    const liftQuotes = [
+      "Light grows where you keep showing up.",
+      "A calmer mind can still do mighty things.",
+      "Small wins count. Stack them.",
+      "You are allowed to grow without rushing.",
+      "Breathe. Reset. Keep moving.",
+      "Today can be gentle and still be strong.",
+      "Momentum loves consistency.",
+      "A little sunlight changes a room. A little effort changes a life.",
+      "Calm is not weakness. It is control.",
+      "You do not need perfect. You need today.",
+      "Hope can be built, one meal and one choice at a time.",
+      "Steady beats dramatic."
     ];
 
 
@@ -1737,7 +1751,7 @@ const COMMON_FOOD_LIBRARY = [
       const totals = totalsForDate(state.ui.selectedDate);
       const calorieGoal = state.goals.calories || 0;
       const calorieDelta = calorieGoal - totals.calories;
-      const quotePool = state.ui.theme === 'ring' ? lotrQuotes : genericQuotes;
+      const quotePool = state.ui.theme === 'ring' ? lotrQuotes : (state.ui.theme === 'lift' ? liftQuotes : genericQuotes);
       const quote = quotePool[Math.abs(dayMeals.length + state.streak.days) % quotePool.length];
 
       area.innerHTML = `
