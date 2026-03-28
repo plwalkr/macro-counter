@@ -865,8 +865,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.2.0';
-    const BUILD_DATE = '2026-03-28h';
+    const APP_VERSION = 'v1.2.1';
+    const BUILD_DATE = '2026-03-28i';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
@@ -910,6 +910,11 @@
         protein: 150,
         carbs: 200,
         fat: 70
+      },
+      profile: {
+        currentWeight: 0,
+        goalWeight: 0,
+        weeklyPace: 1
       },
       streak: {
         days: 1,
@@ -971,6 +976,7 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         ui: state.ui,
         goals: state.goals,
+        profile: state.profile,
         streak: state.streak,
         mealLog: state.mealLog
       }));
@@ -987,6 +993,7 @@
         const parsed = JSON.parse(raw);
         if(parsed && typeof parsed === 'object'){
           Object.assign(state.goals, parsed.goals || {});
+          Object.assign(state.profile, parsed.profile || {});
           Object.assign(state.streak, parsed.streak || {});
           state.mealLog = Array.isArray(parsed.mealLog) ? parsed.mealLog : [];
           if(parsed.ui && typeof parsed.ui === 'object'){
@@ -1070,7 +1077,7 @@
       area.innerHTML = `
         <section class="panel">
           <div class="copy" style="margin-bottom:12px;">
-            Pick a formula, activity level, and goal. Then set your calorie adjustment and protein target. The result syncs straight into Progression.
+            Pick a formula, activity level, goal, and optional target weight. Goal weight and pace now help drive the calorie math, while the slider acts like a manual adjustment on top.
           </div>
           <form id="calcForm" class="calc-grid">
             <div class="field">
@@ -1098,6 +1105,10 @@
               <input id="inputHeight" type="number" inputmode="decimal" min="48" placeholder="70">
             </div>
             <div class="field">
+              <label for="inputGoalWeight">Goal weight (lbs)</label>
+              <input id="inputGoalWeight" type="number" inputmode="decimal" min="70" placeholder="170" value="${state.profile.goalWeight || ''}">
+            </div>
+            <div class="field">
               <label for="inputAge">Age</label>
               <input id="inputAge" type="number" inputmode="numeric" min="8" max="99" placeholder="30">
             </div>
@@ -1120,6 +1131,14 @@
                 <option value="1.55">Moderate (3–5 workouts/week)</option>
                 <option value="1.725">Active (6–7 workouts/week)</option>
                 <option value="1.9">Very Active (physical job)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="inputWeeklyPace">Goal pace (lb/week)</label>
+              <select id="inputWeeklyPace">
+                <option value="0.5">0.5 lb / week</option>
+                <option value="1" selected>1.0 lb / week</option>
+                <option value="1.5">1.5 lb / week</option>
               </select>
             </div>
             <div class="slider-wrap">
@@ -1168,6 +1187,8 @@
 
       const formulaSel = document.getElementById('inputFormula');
       const goalSel = document.getElementById('inputGoal');
+      const goalWeightEl = document.getElementById('inputGoalWeight');
+      const weeklyPaceEl = document.getElementById('inputWeeklyPace');
       const goalPercent = document.getElementById('goalPercent');
       const goalPercentLabel = document.getElementById('goalPercentLabel');
       const proteinPerLb = document.getElementById('proteinPerLb');
@@ -1192,6 +1213,8 @@
       });
       goalPercent.addEventListener('input', updateGoalPercentLabel);
       proteinPerLb.addEventListener('input', updateProteinLabel);
+      if(goalWeightEl && state.profile.goalWeight) goalWeightEl.value = state.profile.goalWeight;
+      if(weeklyPaceEl && state.profile.weeklyPace) weeklyPaceEl.value = String(state.profile.weeklyPace);
       updateGoalPercentLabel();
       updateProteinLabel();
 
@@ -1212,10 +1235,18 @@
       const bodyFat = Number(document.getElementById('inputBodyFat')?.value || 0);
       const adjPct = Number(document.getElementById('goalPercent').value) / 100;
       const proteinPerLb = Number(document.getElementById('proteinPerLb').value || 0.8);
+      const goalWeightLb = Number(document.getElementById('inputGoalWeight')?.value || 0);
+      const weeklyPace = Number(document.getElementById('inputWeeklyPace')?.value || 1);
 
       if(!weightLb || !heightIn || !age){
         showToast('Fill in weight, height, and age first.');
         logDebug('warn', 'Macro calculation blocked due to missing inputs.');
+        return;
+      }
+
+      if(goalWeightLb && goalWeightLb < 70){
+        showToast('Enter a realistic goal weight.');
+        logDebug('warn', 'Macro calculation blocked: invalid goal weight.', { goalWeightLb });
         return;
       }
 
@@ -1241,15 +1272,39 @@
           : 655 + (4.35 * weightLb) + (4.7 * heightIn) - (4.7 * age);
       }
 
-      const calories = Math.round((bmr * activity) * (1 + adjPct));
-      const protein = Math.round(weightLb * proteinPerLb);
-      const fat = Math.round((calories * 0.25) / 9);
+      const maintenanceCalories = bmr * activity;
+      let targetDailyAdjustment = 0;
+      let goalMode = goalSel.value;
+      let goalWeightDelta = 0;
+
+      if(goalWeightLb){
+        goalWeightDelta = Math.round((goalWeightLb - weightLb) * 10) / 10;
+        if(Math.abs(goalWeightDelta) >= 1){
+          goalMode = goalWeightDelta < 0 ? 'lose' : 'gain';
+          targetDailyAdjustment = Math.sign(goalWeightDelta) * ((weeklyPace * 3500) / 7);
+        }
+      }
+
+      if(!targetDailyAdjustment){
+        if(goalMode === 'lose') targetDailyAdjustment = -(weeklyPace * 3500) / 7;
+        else if(goalMode === 'gain') targetDailyAdjustment = (weeklyPace * 3500) / 7;
+      }
+
+      const manualAdjustment = maintenanceCalories * adjPct;
+      const totalCaloriesRaw = maintenanceCalories + targetDailyAdjustment + manualAdjustment;
+      const calories = Math.max(1200, Math.round(totalCaloriesRaw));
+      const proteinWeightBase = goalWeightLb || weightLb;
+      const protein = Math.round(proteinWeightBase * proteinPerLb);
+      const fat = Math.max(35, Math.round((calories * 0.25) / 9));
       const carbs = Math.max(0, Math.round((calories - ((protein * 4) + (fat * 9))) / 4));
 
       state.goals = { calories, protein, carbs, fat };
+      state.profile.currentWeight = weightLb;
+      state.profile.goalWeight = goalWeightLb || 0;
+      state.profile.weeklyPace = weeklyPace;
       persistState();
       showToast(`Goals updated (${formula.toUpperCase()})`);
-      logDebug('action', 'Macro goals recalculated.', { formula, calories, protein, carbs, fat });
+      logDebug('action', 'Macro goals recalculated.', { formula, calories, protein, carbs, fat, maintenanceCalories: Math.round(maintenanceCalories), targetDailyAdjustment: Math.round(targetDailyAdjustment), manualAdjustment: Math.round(manualAdjustment), goalWeightLb, weeklyPace, goalWeightDelta, goalMode });
       renderCurrentTab();
       setActiveTab('prog');
     }
@@ -1267,6 +1322,8 @@
 
     function resetGoalDefaults(){
       state.goals = { calories:2000, protein:150, carbs:200, fat:70 };
+      state.profile.goalWeight = 0;
+      state.profile.weeklyPace = 1;
       persistState();
       showToast('Goals reset to defaults.');
       logDebug('action', 'Goals reset to defaults.');
@@ -2087,6 +2144,49 @@
       };
     }
 
+
+    function foodCandidateName(item){
+      return item.product_name || item.generic_name || item.brands || item.code || 'Food';
+    }
+
+    function foodCandidateCalories(item){
+      const n = item.nutriments || {};
+      return Math.round(n['energy-kcal_serving'] || n['energy-kcal_100g'] || 0);
+    }
+
+    function rankAutocompleteResults(products, query){
+      const q = (query || '').trim().toLowerCase();
+      const words = q.split(/\s+/).filter(Boolean);
+      return (products || []).map(item => {
+        const name = foodCandidateName(item).toLowerCase();
+        const brands = String(item.brands || '').toLowerCase();
+        let score = 0;
+        if(name === q) score += 120;
+        if(name.startsWith(q)) score += 70;
+        if(name.includes(q)) score += 40;
+        if(brands.includes(q)) score += 18;
+        words.forEach(word => {
+          if(name.includes(word)) score += 12;
+          if(brands.includes(word)) score += 6;
+        });
+        if(item.image_url) score += 3;
+        if(foodCandidateCalories(item) > 0) score += 4;
+        return { item, score };
+      }).sort((a,b) => b.score - a.score).map(x => x.item);
+    }
+
+    function fillMealFormFromFoodItem(food){
+      const n = food.nutriments || {};
+      const product = {
+        name: food.product_name || food.generic_name || food.brands || 'Food',
+        calories: Math.round(n['energy-kcal_serving'] || n['energy-kcal_100g'] || ((n['energy_100g'] || 0) / 4.184) || 0),
+        protein: Math.round(n['proteins_serving'] || n['proteins_100g'] || 0),
+        carbs: Math.round(n['carbohydrates_serving'] || n['carbohydrates_100g'] || 0),
+        fat: Math.round(n['fat_serving'] || n['fat_100g'] || 0)
+      };
+      fillMealFormFromBarcode(product, food.code || null);
+    }
+
     function fillMealFormFromBarcode(product, code){
       const nameEl = document.getElementById('mealName');
       const calEl = document.getElementById('mealCalories');
@@ -2134,15 +2234,18 @@
           fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=8`)
             .then(r => r.json())
             .then(data => {
-              autocompleteResults = Array.isArray(data.products) ? data.products : [];
+              autocompleteResults = rankAutocompleteResults(Array.isArray(data.products) ? data.products : [], query).slice(0, 8);
               if(!autocompleteResults.length){
                 if(list) list.style.display = 'none';
                 return;
               }
               if(list){
                 list.innerHTML = autocompleteResults.map((item, idx) => {
-                  const name = escapeHtml(item.product_name || item.brands || 'Food');
-                  return `<div class="autocomplete-item" data-idx="${idx}">${name}</div>`;
+                  const name = escapeHtml(foodCandidateName(item));
+                  const brand = escapeHtml(item.brands || '');
+                  const cals = foodCandidateCalories(item);
+                  const sub = [brand, cals ? `${cals} cal` : ''].filter(Boolean).join(' • ');
+                  return `<div class="autocomplete-item" data-idx="${idx}"><div>${name}</div>${sub ? `<small style="display:block;color:var(--muted);margin-top:3px;">${sub}</small>` : ''}</div>`;
                 }).join('');
                 list.style.display = 'block';
               }
@@ -2163,14 +2266,9 @@
           const idx = Number(item.getAttribute('data-idx'));
           const food = autocompleteResults[idx];
           if(food){
-            const n = food.nutriments || {};
-            document.getElementById('mealName').value = food.product_name || food.brands || '';
-            document.getElementById('mealCalories').value = Math.round(n['energy-kcal_100g'] || n['energy-kcal_serving'] || 0);
-            document.getElementById('mealProtein').value = Math.round(n['proteins_100g'] || n['proteins_serving'] || 0);
-            document.getElementById('mealCarbs').value = Math.round(n['carbohydrates_100g'] || n['carbohydrates_serving'] || 0);
-            document.getElementById('mealFat').value = Math.round(n['fat_100g'] || n['fat_serving'] || 0);
+            fillMealFormFromFoodItem(food);
             if(list) list.style.display = 'none';
-            logDebug('action', 'Autocomplete food selected.', { name: food.product_name || food.brands || 'Food' });
+            logDebug('action', 'Autocomplete food selected.', { name: foodCandidateName(food) });
           }
           return;
         }
@@ -2186,7 +2284,26 @@
         const list = document.getElementById('autocompleteList');
         if(event.key === 'Escape' && list){
           list.style.display = 'none';
+          return;
         }
+        if(!list || list.style.display === 'none') return;
+        const items = Array.from(list.querySelectorAll('.autocomplete-item'));
+        if(!items.length) return;
+        let activeIndex = items.findIndex(el => el.classList.contains('active'));
+        if(event.key === 'ArrowDown'){
+          event.preventDefault();
+          activeIndex = Math.min(activeIndex + 1, items.length - 1);
+        }else if(event.key === 'ArrowUp'){
+          event.preventDefault();
+          activeIndex = Math.max(activeIndex - 1, 0);
+        }else if(event.key === 'Enter' && activeIndex >= 0){
+          event.preventDefault();
+          items[activeIndex].click();
+          return;
+        }else{
+          return;
+        }
+        items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
       });
 
       autocompleteAttached = true;
@@ -2224,6 +2341,7 @@
         mealCountSelectedDay: dayMeals.length,
         totalsSelectedDay: totals,
         goals: state.goals,
+        profile: state.profile,
         streak: state.streak,
         userAgent: navigator.userAgent
       };
@@ -2347,6 +2465,7 @@
       navigator.clipboard.writeText(JSON.stringify({
         ui: state.ui,
         goals: state.goals,
+        profile: state.profile,
         streak: state.streak,
         mealLog: state.mealLog
       }, null, 2))
