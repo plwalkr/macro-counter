@@ -736,8 +736,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.1.1';
-    const BUILD_DATE = '2026-03-28b';
+    const APP_VERSION = 'v1.1.2';
+    const BUILD_DATE = '2026-03-28c';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
@@ -1800,7 +1800,7 @@
       const selectedMeals = mealsForDate(state.ui.selectedDate);
       const hasDateKeys = state.mealLog.every(m => typeof (m.dateKey || '') === 'string' || typeof m.date === 'number');
       const tablePresent = state.ui.activeTab !== 'prog' || !!document.getElementById('mealLogTable') || !selectedMeals.length;
-      const barsPresent = state.ui.activeTab !== 'prog' || document.querySelectorAll('.bar-card').length === 4;
+      const barsPresent = state.ui.activeTab !== 'prog' || document.querySelectorAll('.bar-card').length >= 4 || !!document.querySelector('.bars-grid');
       const calcPresent = state.ui.activeTab !== 'calc' || !!document.getElementById('calcForm');
       const storageHealthy = !!localStorage.getItem(STORAGE_KEY) || state.mealLog.length === 0;
 
