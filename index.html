@@ -103,7 +103,7 @@
       padding:4px 9px;
       border-radius:999px;
       font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      font-size:.4em;
+      font-size:.56em;
       font-weight:900;
       letter-spacing:.08em;
       vertical-align:middle;
@@ -118,6 +118,20 @@
       background:linear-gradient(180deg,#ffe08a,#f5c04d);
       border:1px solid rgba(255,220,120,.68);
       box-shadow:0 6px 18px rgba(245,192,77,.25);
+    }
+
+    @media(max-width:520px){
+      h1{
+        display:flex;
+        flex-wrap:wrap;
+        align-items:center;
+        gap:8px;
+      }
+      .version-chip{
+        margin-left:0;
+        font-size:.62em;
+        padding:5px 10px;
+      }
     }
 
     .subtitle{
@@ -849,8 +863,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.1.7';
-    const BUILD_DATE = '2026-03-28e';
+    const APP_VERSION = 'v1.1.8';
+    const BUILD_DATE = '2026-03-28f';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
