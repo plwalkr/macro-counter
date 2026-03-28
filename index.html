@@ -602,17 +602,76 @@
       position:fixed;
       inset:0;
       display:none;
-      align-items:center;
-      justify-content:center;
+      align-items:stretch;
+      justify-content:stretch;
       background:rgba(0,0,0,.82);
       z-index:2000;
-      padding:20px;
+      overflow:hidden;
+      touch-action:none;
+    }
+    #barcodeOverlay .scan-stage{
+      position:relative;
+      width:100%;
+      height:100%;
+      overflow:hidden;
+      background:#000;
     }
     #barcodeOverlay video,#barcodeOverlay canvas{
-      width:min(94vw, 720px);
-      height:auto;
-      border-radius:20px;
-      box-shadow:0 22px 60px rgba(0,0,0,.55);
+      position:absolute;
+      inset:0;
+      width:100% !important;
+      height:100% !important;
+      object-fit:cover;
+      border-radius:0;
+      box-shadow:none;
+      background:#000;
+    }
+    #barcodeOverlay .scan-mask{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:linear-gradient(rgba(0,0,0,.52), rgba(0,0,0,.52));
+    }
+    #barcodeOverlay .scan-guide{
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform:translate(-50%,-50%);
+      width:min(88vw, 520px);
+      height:min(32vw, 180px);
+      border:3px solid rgba(255,255,255,.92);
+      border-radius:22px;
+      box-shadow:0 0 0 9999px rgba(0,0,0,.42);
+      pointer-events:none;
+    }
+    #barcodeOverlay .scan-label{
+      position:absolute;
+      left:50%;
+      top:calc(50% - min(20vw, 110px));
+      transform:translateX(-50%);
+      color:#fff;
+      font-weight:900;
+      letter-spacing:.02em;
+      text-align:center;
+      width:min(90vw, 560px);
+      text-shadow:0 6px 18px rgba(0,0,0,.4);
+      pointer-events:none;
+    }
+    #barcodeCloseBtn{
+      position:fixed;
+      top:calc(14px + var(--safe-top));
+      right:14px;
+      width:52px;
+      height:52px;
+      border-radius:999px;
+      display:none;
+      z-index:2012;
+      border:1px solid rgba(255,255,255,.18);
+      background:rgba(9,12,18,.68);
+      color:#fff;
+      font-size:1.4rem;
+      font-weight:900;
+      backdrop-filter:blur(10px);
     }
     #barcodeCancelBtn{
       position:fixed;
@@ -620,7 +679,12 @@
       transform:translateX(-50%);
       bottom:calc(18px + var(--safe-bottom));
       display:none;
-      z-index:2010;
+      z-index:2011;
+      min-width:190px;
+      background:#fff !important;
+      color:#47567a !important;
+      border:none !important;
+      box-shadow:0 18px 38px rgba(0,0,0,.35);
     }
 
     @media (min-width: 700px){
@@ -731,12 +795,13 @@
     </section>
   </div>
 
-  <div id="barcodeOverlay"></div>
+  <div id="barcodeOverlay" aria-hidden="true"></div>
+  <button id="barcodeCloseBtn" type="button" aria-label="Close scan">✕</button>
   <button class="ghost-btn" id="barcodeCancelBtn" type="button">Cancel Scan</button>
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.1.2';
+    const APP_VERSION = 'v1.1.3';
     const BUILD_DATE = '2026-03-28c';
     const STORAGE_KEY = 'macroLegendState_v110';
 
@@ -1542,14 +1607,28 @@
     }
 
     async function scanBarcodeNative(formats){
-      const overlay = document.getElementById('barcodeOverlay');
       const cancelBtn = document.getElementById('barcodeCancelBtn');
-      overlay.innerHTML = '<video id="nativeBarcodeVideo" autoplay playsinline muted style="width:min(92vw,680px);max-height:72vh;border-radius:16px;background:#000"></video>';
-      overlay.style.display = 'flex';
+      const closeBtn = document.getElementById('barcodeCloseBtn');
+      const stage = buildScannerOverlay('Center the barcode inside the box');
+      const video = document.createElement('video');
+      video.id = 'nativeBarcodeVideo';
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = true;
+      stage.appendChild(video);
       cancelBtn.style.display = 'inline-flex';
-      const video = document.getElementById('nativeBarcodeVideo');
+      closeBtn.style.display = 'inline-flex';
       try{
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' } }, audio:false });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal:'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            focusMode: 'continuous',
+            advanced: [{ focusMode:'continuous' }, { zoom: 2 }]
+          },
+          audio:false
+        });
         state.ui.nativeStream = stream;
         video.srcObject = stream;
         await video.play();
@@ -1584,29 +1663,30 @@
     }
 
     async function scanBarcodeWithQuagga(){
-      const overlay = document.getElementById('barcodeOverlay');
       const cancelBtn = document.getElementById('barcodeCancelBtn');
-      overlay.innerHTML = '';
-      overlay.style.display = 'flex';
+      const closeBtn = document.getElementById('barcodeCloseBtn');
+      const stage = buildScannerOverlay('Move closer until the barcode fills the box');
       cancelBtn.style.display = 'inline-flex';
+      closeBtn.style.display = 'inline-flex';
 
       try{
         Quagga.init({
           inputStream: {
             type: 'LiveStream',
-            target: overlay,
+            target: stage,
             constraints: {
-              facingMode: 'environment',
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
+              facingMode: { ideal:'environment' },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              aspectRatio: { ideal: 1.7777777778 }
             }
           },
-          locator: { patchSize:'medium', halfSample:true },
+          locator: { patchSize:'large', halfSample:false },
           numOfWorkers: Math.max(1, Math.min(2, navigator.hardwareConcurrency || 2)),
           locate: true,
           frequency: 8,
           decoder: {
-            readers: ['ean_reader', 'ean_8_reader', 'code_128_reader']
+            readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'code_128_reader']
           }
         }, (err) => {
           if(err){
@@ -1633,6 +1713,54 @@
         logDebug('error', 'Quagga setup threw before init callback.', { error: String(err) });
         showToast('Camera setup failed.');
         stopBarcodeScan();
+      }
+    }
+
+    function buildScannerOverlay(labelText){
+      const overlay = document.getElementById('barcodeOverlay');
+      if(!overlay) return null;
+      overlay.innerHTML = `
+        <div class="scan-stage">
+          <div class="scan-mask"></div>
+          <div class="scan-guide"></div>
+          <div class="scan-label">${escapeHtml(labelText || 'Center the barcode inside the box')}</div>
+        </div>
+      `;
+      overlay.style.display = 'flex';
+      overlay.setAttribute('aria-hidden', 'false');
+      return overlay.querySelector('.scan-stage');
+    }
+
+    function stopBarcodeScan(reason){
+      const overlay = document.getElementById('barcodeOverlay');
+      const cancelBtn = document.getElementById('barcodeCancelBtn');
+      const closeBtn = document.getElementById('barcodeCloseBtn');
+      if(state.ui.scanRaf){
+        try{ cancelAnimationFrame(state.ui.scanRaf); }catch(_){ }
+        state.ui.scanRaf = null;
+      }
+      if(state.ui.nativeStream){
+        try{ state.ui.nativeStream.getTracks().forEach(track => track.stop()); }catch(_){ }
+        state.ui.nativeStream = null;
+      }
+      try{
+        if(window.Quagga){
+          try{ Quagga.offDetected(barcodeDetected); }catch(_){ }
+          try{ Quagga.stop(); }catch(_){ }
+          try{ Quagga.CameraAccess && Quagga.CameraAccess.release && Quagga.CameraAccess.release(); }catch(_){ }
+        }
+      }catch(_){ }
+      state.ui.scanning = false;
+      state.ui.scanEngine = null;
+      if(overlay){
+        overlay.innerHTML = '';
+        overlay.style.display = 'none';
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+      if(cancelBtn) cancelBtn.style.display = 'none';
+      if(closeBtn) closeBtn.style.display = 'none';
+      if(reason){
+        logDebug('info', 'Barcode scan stopped.', { reason });
       }
     }
 
@@ -1783,6 +1911,7 @@
         secureContext: window.isSecureContext,
         online: navigator.onLine,
         scanning: state.ui.scanning,
+        scanEngine: state.ui.scanEngine || 'none',
         mealCountAll: state.mealLog.length,
         mealCountSelectedDay: dayMeals.length,
         totalsSelectedDay: totals,
@@ -1800,7 +1929,7 @@
       const selectedMeals = mealsForDate(state.ui.selectedDate);
       const hasDateKeys = state.mealLog.every(m => typeof (m.dateKey || '') === 'string' || typeof m.date === 'number');
       const tablePresent = state.ui.activeTab !== 'prog' || !!document.getElementById('mealLogTable') || !selectedMeals.length;
-      const barsPresent = state.ui.activeTab !== 'prog' || document.querySelectorAll('.bar-card').length >= 4 || !!document.querySelector('.bars-grid');
+      const barsPresent = state.ui.activeTab !== 'prog' || document.querySelectorAll('.bar-card,.progress-card').length >= 4;
       const calcPresent = state.ui.activeTab !== 'calc' || !!document.getElementById('calcForm');
       const storageHealthy = !!localStorage.getItem(STORAGE_KEY) || state.mealLog.length === 0;
 
@@ -1870,6 +1999,7 @@
           notes.push('Mobile device detected. Numeric fields use inputmode to improve keyboard behavior.');
         }
         notes.push('Daily totals now use the selected day only. Historical meals stay saved for exports.');
+        if(state.ui.scanning) notes.push('Scanner open. Tap the X, Cancel, or the dark backdrop to exit.');
         notesEl.innerHTML = notes.map(note => `• ${escapeHtml(note)}`).join('<br>');
       }
       if(logEl){
@@ -1953,7 +2083,13 @@
       document.getElementById('copyDebugBtn').addEventListener('click', copyDebugReport);
       document.getElementById('copyStateBtn').addEventListener('click', copyStateJson);
       document.getElementById('clearDebugBtn').addEventListener('click', clearDebugLog);
-      document.getElementById('barcodeCancelBtn').addEventListener('click', stopBarcodeScan);
+      document.getElementById('barcodeCancelBtn').addEventListener('click', () => stopBarcodeScan('cancel_button'));
+      document.getElementById('barcodeCloseBtn').addEventListener('click', () => stopBarcodeScan('close_button'));
+      document.getElementById('barcodeOverlay').addEventListener('click', (event) => {
+        if(event.target.id === 'barcodeOverlay'){
+          stopBarcodeScan('overlay_backdrop');
+        }
+      });
 
       window.addEventListener('error', (event) => {
         logDebug('error', 'Window error.', { message: event.message, source: event.filename, line: event.lineno, column: event.colno });
@@ -1963,8 +2099,22 @@
       });
       window.addEventListener('online', () => { logDebug('info', 'Network back online.'); refreshDebugPanel(); });
       window.addEventListener('offline', () => { logDebug('warn', 'Network offline.'); refreshDebugPanel(); });
+      document.addEventListener('visibilitychange', () => {
+        if(document.hidden && state.ui.scanning){
+          stopBarcodeScan('document_hidden');
+        }
+      });
+      window.addEventListener('pagehide', () => {
+        if(state.ui.scanning){
+          stopBarcodeScan('pagehide');
+        }
+      });
       document.addEventListener('keydown', (event) => {
         if(event.key === 'Escape'){
+          if(state.ui.scanning){
+            stopBarcodeScan('escape_key');
+            return;
+          }
           closeDebugPanel();
         }
       });
