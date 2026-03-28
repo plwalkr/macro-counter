@@ -331,10 +331,14 @@
       grid-template-columns:56px minmax(0,1fr) auto;
       gap:10px;
       align-items:center;
+      width:100%;
+      min-width:0;
     }
     .date-input{
       min-height:50px;
       min-width:0;
+      width:100%;
+      max-width:100%;
     }
     #dateTodayBtn{
       min-width:96px;
@@ -344,16 +348,24 @@
     @media(max-width:520px){
       .date-row{
         grid-template-columns:56px minmax(0,1fr);
-        align-items:start;
+        grid-template-areas:
+          "prev date"
+          ". today";
+        align-items:center;
+        gap:10px;
       }
-      #selectedDate{
-        grid-column:2;
+      #datePrevBtn{
+        grid-area:prev;
+      }
+      #selectedDateInput{
+        grid-area:date;
+        width:100%;
       }
       #dateTodayBtn{
-        grid-column:1 / -1;
-        justify-self:end;
+        grid-area:today;
+        justify-self:start;
         min-width:88px;
-        margin-top:2px;
+        margin-top:0;
       }
     }
     .summary-grid{
@@ -865,8 +877,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.2.3';
-    const BUILD_DATE = '2026-03-28k';
+    const APP_VERSION = 'v1.2.4';
+    const BUILD_DATE = '2026-03-28l';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
