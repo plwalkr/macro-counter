@@ -327,47 +327,51 @@
       margin-right:4px;
     }
     .date-row{
-      display:grid;
-      grid-template-columns:56px minmax(0,1fr) auto;
-      gap:10px;
-      align-items:center;
-      width:100%;
-      min-width:0;
-    }
-    .date-input{
-      min-height:50px;
-      min-width:0;
-      width:100%;
-      max-width:100%;
-    }
-    #dateTodayBtn{
-      min-width:96px;
-      white-space:nowrap;
-      justify-self:end;
-    }
-    @media(max-width:520px){
-      .date-row{
-        grid-template-columns:56px minmax(0,1fr);
-        grid-template-areas:
-          "prev date"
-          ". today";
-        align-items:center;
-        gap:10px;
-      }
-      #datePrevBtn{
-        grid-area:prev;
-      }
-      #selectedDateInput{
-        grid-area:date;
-        width:100%;
-      }
-      #dateTodayBtn{
-        grid-area:today;
-        justify-self:start;
-        min-width:88px;
-        margin-top:0;
-      }
-    }
+  display:grid;
+  grid-template-columns:56px minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  width:100%;
+  min-width:0;
+}
+.date-input{
+  min-height:50px;
+  min-width:0;
+  width:100%;
+  max-width:100%;
+  appearance:none;
+  -webkit-appearance:none;
+}
+#dateTodayBtn{
+  min-width:96px;
+  white-space:nowrap;
+  justify-self:end;
+}
+@media(max-width:600px){
+  .date-row{
+    grid-template-columns:56px minmax(0,1fr);
+    grid-template-areas:
+      "prev today"
+      "date date";
+    align-items:center;
+    gap:10px;
+  }
+  #datePrevBtn{
+    grid-area:prev;
+    justify-self:start;
+  }
+  #dateTodayBtn{
+    grid-area:today;
+    justify-self:end;
+    min-width:88px;
+  }
+  #selectedDateInput{
+    grid-area:date;
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+}
     .summary-grid{
       display:grid;
       gap:10px;
@@ -805,12 +809,13 @@
     <header class="topbar">
       <div class="title-row">
         <div class="title-block">
-          <h1>MacroLegend <span class="version-chip" id="headerVersionChip">v1.1.9</span></h1>
+          <h1>MacroLegend <span class="version-chip" id="headerVersionChip">v1.3.0</span></h1>
           <div class="subtitle">Mobile-first macro tracking with daily totals, better sanity checks, and a real debug system.</div>
         </div>
         <div class="theme-toggle">
           <button class="theme-btn active" id="appleLightBtn" type="button">Apple Light</button>
           <button class="theme-btn" id="ringModeBtn" type="button">Ring Mode</button>
+          <button class="theme-btn" id="appReloadBtn" type="button" title="Reload app">↻ Reload</button>
         </div>
       </div>
       <div class="tab-row">
@@ -877,9 +882,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.2.4';
-    const BUILD_DATE = '2026-03-28l';
-    const STORAGE_KEY = 'macroLegendState_v110';
+    const APP_VERSION = 'v1.3.0';
+    const BUILD_DATE = '2026-03-28m';
+    const STORAGE_KEY = 'macroLegendState_v130';
 
     const lotrQuotes = [
       "Even the smallest person can change the course of the future.",
@@ -909,6 +914,22 @@
       "No pressure, no diamonds.",
       "Life is tough, but so are you."
     ];
+
+
+const COMMON_FOOD_LIBRARY = [
+  { product_name:'Chicken breast', brands:'Generic', nutriments:{ 'energy-kcal_serving':165, 'proteins_serving':31, 'carbohydrates_serving':0, 'fat_serving':4 } },
+  { product_name:'White rice', brands:'Generic', nutriments:{ 'energy-kcal_serving':206, 'proteins_serving':4, 'carbohydrates_serving':45, 'fat_serving':0 } },
+  { product_name:'Eggs', brands:'Generic', nutriments:{ 'energy-kcal_serving':70, 'proteins_serving':6, 'carbohydrates_serving':0, 'fat_serving':5 } },
+  { product_name:'Ground beef 90/10', brands:'Generic', nutriments:{ 'energy-kcal_serving':200, 'proteins_serving':22, 'carbohydrates_serving':0, 'fat_serving':12 } },
+  { product_name:'Banana', brands:'Generic', nutriments:{ 'energy-kcal_serving':105, 'proteins_serving':1, 'carbohydrates_serving':27, 'fat_serving':0 } },
+  { product_name:'Oatmeal', brands:'Generic', nutriments:{ 'energy-kcal_serving':150, 'proteins_serving':5, 'carbohydrates_serving':27, 'fat_serving':3 } },
+  { product_name:'Greek yogurt', brands:'Generic', nutriments:{ 'energy-kcal_serving':100, 'proteins_serving':17, 'carbohydrates_serving':6, 'fat_serving':0 } },
+  { product_name:'Peanut butter', brands:'Generic', nutriments:{ 'energy-kcal_serving':190, 'proteins_serving':7, 'carbohydrates_serving':7, 'fat_serving':16 } },
+  { product_name:'Protein shake', brands:'Generic', nutriments:{ 'energy-kcal_serving':160, 'proteins_serving':30, 'carbohydrates_serving':5, 'fat_serving':3 } },
+  { product_name:'Apple', brands:'Generic', nutriments:{ 'energy-kcal_serving':95, 'proteins_serving':0, 'carbohydrates_serving':25, 'fat_serving':0 } },
+  { product_name:'Broccoli', brands:'Generic', nutriments:{ 'energy-kcal_serving':55, 'proteins_serving':4, 'carbohydrates_serving':11, 'fat_serving':1 } },
+  { product_name:'Salmon', brands:'Generic', nutriments:{ 'energy-kcal_serving':233, 'proteins_serving':25, 'carbohydrates_serving':0, 'fat_serving':14 } }
+];
 
     const state = {
       ui: {
@@ -948,6 +969,7 @@
         lastDate: null
       },
       mealLog: [],
+      foodCache: [],
       debug: {
         entries: [],
         lastChecks: []
@@ -1005,7 +1027,8 @@
         profile: state.profile,
         calcDraft: state.calcDraft,
         streak: state.streak,
-        mealLog: state.mealLog
+        mealLog: state.mealLog,
+        foodCache: state.foodCache
       }));
       refreshDebugPanel();
     }
@@ -1024,6 +1047,7 @@
           Object.assign(state.calcDraft, parsed.calcDraft || {});
           Object.assign(state.streak, parsed.streak || {});
           state.mealLog = Array.isArray(parsed.mealLog) ? parsed.mealLog : [];
+          state.foodCache = Array.isArray(parsed.foodCache) ? parsed.foodCache : [];
           if(parsed.ui && typeof parsed.ui === 'object'){
             state.ui.theme = parsed.ui.theme === 'ring' ? 'ring' : 'light';
             state.ui.activeTab = parsed.ui.activeTab === 'prog' ? 'prog' : 'calc';
@@ -1808,7 +1832,7 @@
       }
 
       if(isiPhoneSafari){
-        showToast('Live scan is limited on iPhone Safari. Taking a photo works better.');
+        showToast('This iPhone browser needs a manual photo. After you take it, scan will run automatically.');
         logDebug('info', 'Using photo barcode capture for iPhone Safari fallback.');
         launchPhotoBarcodeCapture();
         return;
@@ -2190,6 +2214,7 @@
           renderCurrentTab();
         }
 
+        rememberFoodItem({ code, product_name: product.name, nutriments: { 'energy-kcal_serving': product.calories, 'proteins_serving': product.protein, 'carbohydrates_serving': product.carbs, 'fat_serving': product.fat } });
         fillMealFormFromBarcode(product, code);
         showToast(`Filled ${product.name}`);
         logDebug('action', 'Barcode food auto-filled into meal form.', { code, product });
@@ -2217,6 +2242,85 @@
       };
     }
 
+
+
+function normalizeFoodCacheEntry(item){
+  if(!item) return null;
+  const nutriments = item.nutriments || {};
+  const entry = {
+    code: item.code || '',
+    product_name: item.product_name || item.name || '',
+    generic_name: item.generic_name || '',
+    brands: item.brands || '',
+    nutriments: {
+      'energy-kcal_serving': Math.round(Number(nutriments['energy-kcal_serving'] || item.calories || 0) || 0),
+      'energy-kcal_100g': Math.round(Number(nutriments['energy-kcal_100g'] || 0) || 0),
+      'proteins_serving': Math.round(Number(nutriments['proteins_serving'] || item.protein || 0) || 0),
+      'carbohydrates_serving': Math.round(Number(nutriments['carbohydrates_serving'] || item.carbs || 0) || 0),
+      'fat_serving': Math.round(Number(nutriments['fat_serving'] || item.fat || 0) || 0)
+    }
+  };
+  if(!entry.product_name && !entry.brands && !entry.code) return null;
+  return entry;
+}
+
+function rememberFoodItem(item){
+  const normalized = normalizeFoodCacheEntry(item);
+  if(!normalized) return;
+  const key = (normalized.code || normalized.product_name || normalized.brands).toLowerCase();
+  const next = [normalized, ...state.foodCache.filter(existing => {
+    const normalizedExisting = normalizeFoodCacheEntry(existing);
+    if(!normalizedExisting) return false;
+    const existingKey = (normalizedExisting.code || normalizedExisting.product_name || normalizedExisting.brands).toLowerCase();
+    return existingKey !== key;
+  })].slice(0, 80);
+  state.foodCache = next;
+  persistState();
+}
+
+function localAutocompleteCandidates(){
+  const fromMeals = state.mealLog.map(meal => normalizeFoodCacheEntry({
+    product_name: meal.name,
+    nutriments: {
+      'energy-kcal_serving': meal.calories,
+      'proteins_serving': meal.protein,
+      'carbohydrates_serving': meal.carbs,
+      'fat_serving': meal.fat
+    }
+  })).filter(Boolean);
+  return [...state.foodCache, ...fromMeals, ...COMMON_FOOD_LIBRARY].filter(Boolean);
+}
+
+function dedupeFoodCandidates(items){
+  const seen = new Set();
+  return items.filter(item => {
+    const normalized = normalizeFoodCacheEntry(item);
+    if(!normalized) return false;
+    const key = (normalized.code || normalized.product_name || normalized.brands).toLowerCase();
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function renderAutocompleteList(items){
+  const list = document.getElementById('autocompleteList');
+  autocompleteResults = items.slice(0, 8);
+  if(!list) return;
+  if(!autocompleteResults.length){
+    list.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+  list.innerHTML = autocompleteResults.map((item, idx) => {
+    const name = escapeHtml(foodCandidateName(item));
+    const brand = escapeHtml(item.brands || '');
+    const cals = foodCandidateCalories(item);
+    const sub = [brand, cals ? `${cals} cal` : ''].filter(Boolean).join(' • ');
+    return `<div class="autocomplete-item" data-idx="${idx}"><div>${name}</div>${sub ? `<small style="display:block;color:var(--muted);margin-top:3px;">${sub}</small>` : ''}</div>`;
+  }).join('');
+  list.style.display = 'block';
+}
 
     function foodCandidateName(item){
       return item.product_name || item.generic_name || item.brands || item.code || 'Food';
@@ -2257,6 +2361,7 @@
         carbs: Math.round(n['carbohydrates_serving'] || n['carbohydrates_100g'] || 0),
         fat: Math.round(n['fat_serving'] || n['fat_100g'] || 0)
       };
+      rememberFoodItem(food);
       fillMealFormFromBarcode(product, food.code || null);
     }
 
@@ -2292,47 +2397,41 @@
       const area = document.getElementById('tabArea');
       if(!area) return;
 
-      area.addEventListener('input', (event) => {
-        const input = event.target.closest('#mealName');
-        if(!input) return;
-        const list = document.getElementById('autocompleteList');
-        const query = input.value.trim();
-        clearTimeout(autocompleteTimer);
-        if(!query){
-          autocompleteResults = [];
-          if(list) list.style.display = 'none';
-          return;
-        }
-        autocompleteTimer = setTimeout(() => {
-          fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=8`)
-            .then(r => r.json())
-            .then(data => {
-              autocompleteResults = rankAutocompleteResults(Array.isArray(data.products) ? data.products : [], query).slice(0, 8);
-              if(!autocompleteResults.length){
-                if(list) list.style.display = 'none';
-                return;
-              }
-              if(list){
-                list.innerHTML = autocompleteResults.map((item, idx) => {
-                  const name = escapeHtml(foodCandidateName(item));
-                  const brand = escapeHtml(item.brands || '');
-                  const cals = foodCandidateCalories(item);
-                  const sub = [brand, cals ? `${cals} cal` : ''].filter(Boolean).join(' • ');
-                  return `<div class="autocomplete-item" data-idx="${idx}"><div>${name}</div>${sub ? `<small style="display:block;color:var(--muted);margin-top:3px;">${sub}</small>` : ''}</div>`;
-                }).join('');
-                list.style.display = 'block';
-              }
-            })
-            .catch(err => {
-              logDebug('warn', 'Autocomplete lookup failed.', { error: String(err) });
-              showToast('Food search is unavailable right now.');
-              autocompleteResults = [];
-              if(list) list.style.display = 'none';
-            });
-        }, 180);
-      });
 
-      area.addEventListener('click', (event) => {
+area.addEventListener('input', (event) => {
+  const input = event.target.closest('#mealName');
+  if(!input) return;
+  const query = input.value.trim();
+  clearTimeout(autocompleteTimer);
+  if(!query){
+    autocompleteResults = [];
+    renderAutocompleteList([]);
+    return;
+  }
+
+  const localMatches = rankAutocompleteResults(dedupeFoodCandidates(localAutocompleteCandidates()), query).slice(0, 8);
+  renderAutocompleteList(localMatches);
+
+  autocompleteTimer = setTimeout(async () => {
+    try{
+      const response = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=8`, { cache:'no-store' });
+      const data = await response.json();
+      const remote = Array.isArray(data.products) ? data.products : [];
+      remote.forEach(rememberFoodItem);
+      const merged = dedupeFoodCandidates([...localMatches, ...remote]);
+      renderAutocompleteList(rankAutocompleteResults(merged, query).slice(0, 8));
+    }catch(err){
+      logDebug('warn', 'Autocomplete lookup failed.', { error: String(err) });
+      if(!localMatches.length){
+        showToast('Food search is unavailable right now.');
+      }else{
+        showToast('Showing saved/common food suggestions.');
+      }
+    }
+  }, 180);
+});
+
+area.addEventListener('click', (event) => {
         const item = event.target.closest('.autocomplete-item');
         const list = document.getElementById('autocompleteList');
         if(item){
