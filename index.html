@@ -736,8 +736,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.1.0';
-    const BUILD_DATE = '2026-03-28';
+    const APP_VERSION = 'v1.1.1';
+    const BUILD_DATE = '2026-03-28b';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
@@ -1510,6 +1510,7 @@
       setTimeout(() => toast.remove(), 2100);
     }
 
+    
     async function scanBarcode(){
       if(state.ui.scanning) return;
       if(!('mediaDevices' in navigator)){
@@ -1521,6 +1522,68 @@
         showToast('Camera usually needs HTTPS.');
         logDebug('warn', 'Barcode scan launched outside secure context.');
       }
+
+      if('BarcodeDetector' in window){
+        try{
+          const supported = await BarcodeDetector.getSupportedFormats();
+          const wanted = ['ean_13','ean_8','upc_a','upc_e','code_128'];
+          const formats = wanted.filter(f => supported.includes(f));
+          if(formats.length){
+            await scanBarcodeNative(formats);
+            return;
+          }
+          logDebug('info', 'BarcodeDetector available but desired formats unsupported.', { supported });
+        }catch(err){
+          logDebug('warn', 'BarcodeDetector setup failed. Falling back to Quagga.', { error: String(err) });
+        }
+      }
+
+      await scanBarcodeWithQuagga();
+    }
+
+    async function scanBarcodeNative(formats){
+      const overlay = document.getElementById('barcodeOverlay');
+      const cancelBtn = document.getElementById('barcodeCancelBtn');
+      overlay.innerHTML = '<video id="nativeBarcodeVideo" autoplay playsinline muted style="width:min(92vw,680px);max-height:72vh;border-radius:16px;background:#000"></video>';
+      overlay.style.display = 'flex';
+      cancelBtn.style.display = 'inline-flex';
+      const video = document.getElementById('nativeBarcodeVideo');
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' } }, audio:false });
+        state.ui.nativeStream = stream;
+        video.srcObject = stream;
+        await video.play();
+        state.ui.scanning = true;
+        state.ui.scanEngine = 'native';
+        logDebug('action', 'Native barcode scan started.', { formats });
+        const detector = new BarcodeDetector({ formats });
+        const tick = async () => {
+          if(!state.ui.scanning || state.ui.scanEngine !== 'native') return;
+          try{
+            const barcodes = await detector.detect(video);
+            if(barcodes && barcodes.length){
+              const code = (barcodes[0].rawValue || '').trim();
+              if(code){
+                stopBarcodeScan();
+                handleBarcodeCode(code);
+                return;
+              }
+            }
+          }catch(err){
+            logDebug('warn', 'Native barcode detect tick failed.', { error: String(err) });
+          }
+          state.ui.scanRaf = requestAnimationFrame(tick);
+        };
+        tick();
+      }catch(err){
+        logDebug('error', 'Native barcode scan failed.', { error: String(err) });
+        showToast('Camera could not start.');
+        stopBarcodeScan();
+        throw err;
+      }
+    }
+
+    async function scanBarcodeWithQuagga(){
       const overlay = document.getElementById('barcodeOverlay');
       const cancelBtn = document.getElementById('barcodeCancelBtn');
       overlay.innerHTML = '';
@@ -1539,9 +1602,11 @@
             }
           },
           locator: { patchSize:'medium', halfSample:true },
-          numOfWorkers: navigator.hardwareConcurrency || 2,
+          numOfWorkers: Math.max(1, Math.min(2, navigator.hardwareConcurrency || 2)),
+          locate: true,
+          frequency: 8,
           decoder: {
-            readers: ['ean_reader', 'ean_13_reader', 'upc_reader', 'upc_e_reader']
+            readers: ['ean_reader', 'ean_8_reader', 'code_128_reader']
           }
         }, (err) => {
           if(err){
@@ -1551,50 +1616,24 @@
             return;
           }
           state.ui.scanning = true;
+          state.ui.scanEngine = 'quagga';
           try{
             Quagga.start();
-            logDebug('action', 'Barcode scan started.');
+            logDebug('action', 'Quagga barcode scan started.');
           }catch(startErr){
             logDebug('error', 'Quagga start failed.', { error: String(startErr) });
             showToast('Camera start failed.');
             stopBarcodeScan();
             return;
           }
-          try{
-            Quagga.offDetected(barcodeDetected);
-          }catch(_){}
+          try{ Quagga.offDetected(barcodeDetected); }catch(_){ }
           Quagga.onDetected(barcodeDetected);
         });
-
-        if(!visibilityListenerAttached){
-          document.addEventListener('visibilitychange', () => {
-            if(document.hidden){
-              stopBarcodeScan();
-            }
-          });
-          visibilityListenerAttached = true;
-        }
       }catch(err){
-        logDebug('error', 'Barcode scan blew up.', { error: String(err) });
-        showToast('Camera blocked or unavailable.');
+        logDebug('error', 'Quagga setup threw before init callback.', { error: String(err) });
+        showToast('Camera setup failed.');
         stopBarcodeScan();
       }
-      refreshDebugPanel();
-    }
-
-    function stopBarcodeScan(){
-      try{ Quagga.stop(); }catch(_){}
-      try{ Quagga.offDetected(barcodeDetected); }catch(_){}
-      try{ Quagga.CameraAccess && Quagga.CameraAccess.release(); }catch(_){}
-      const overlay = document.getElementById('barcodeOverlay');
-      const cancelBtn = document.getElementById('barcodeCancelBtn');
-      if(overlay){
-        overlay.innerHTML = '';
-        overlay.style.display = 'none';
-      }
-      if(cancelBtn) cancelBtn.style.display = 'none';
-      state.ui.scanning = false;
-      refreshDebugPanel();
     }
 
     function barcodeDetected(data){
