@@ -103,7 +103,7 @@
       padding:4px 9px;
       border-radius:999px;
       font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      font-size:.56em;
+      font-size:.72em;
       font-weight:900;
       letter-spacing:.08em;
       vertical-align:middle;
@@ -112,6 +112,8 @@
       border:1px solid rgba(43,120,228,.26);
       box-shadow:0 6px 18px rgba(22,32,54,.10);
       white-space:nowrap;
+      min-width:68px;
+      min-height:28px;
     }
     body.ringmode .version-chip{
       color:#201600;
@@ -129,7 +131,7 @@
       }
       .version-chip{
         margin-left:0;
-        font-size:.62em;
+        font-size:.74em;
         padding:5px 10px;
       }
     }
@@ -791,7 +793,7 @@
     <header class="topbar">
       <div class="title-row">
         <div class="title-block">
-          <h1>MacroLegend <span class="version-chip" id="headerVersionChip"></span></h1>
+          <h1>MacroLegend <span class="version-chip" id="headerVersionChip">v1.1.9</span></h1>
           <div class="subtitle">Mobile-first macro tracking with daily totals, better sanity checks, and a real debug system.</div>
         </div>
         <div class="theme-toggle">
@@ -863,8 +865,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.1.8';
-    const BUILD_DATE = '2026-03-28f';
+    const APP_VERSION = 'v1.1.9';
+    const BUILD_DATE = '2026-03-28g';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
@@ -2422,6 +2424,7 @@
       hydrateState();
       normalizeLegacyMeals();
       wireGlobalEvents();
+      syncHeaderVersion();
       applyTheme(state.ui.theme);
       setActiveTab(state.ui.activeTab);
       runChecks();
