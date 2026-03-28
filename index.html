@@ -865,8 +865,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.2.1';
-    const BUILD_DATE = '2026-03-28i';
+    const APP_VERSION = 'v1.2.2';
+    const BUILD_DATE = '2026-03-28j';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
@@ -915,6 +915,20 @@
         currentWeight: 0,
         goalWeight: 0,
         weeklyPace: 1
+      },
+      calcDraft: {
+        formula: 'msj',
+        goal: 'maintain',
+        weight: '',
+        height: '',
+        age: '',
+        gender: 'male',
+        bodyFat: '',
+        activity: '1.2',
+        weeklyPace: '1',
+        goalPercent: '0',
+        proteinPerLb: '0.8',
+        goalWeight: ''
       },
       streak: {
         days: 1,
@@ -977,6 +991,7 @@
         ui: state.ui,
         goals: state.goals,
         profile: state.profile,
+        calcDraft: state.calcDraft,
         streak: state.streak,
         mealLog: state.mealLog
       }));
@@ -994,6 +1009,7 @@
         if(parsed && typeof parsed === 'object'){
           Object.assign(state.goals, parsed.goals || {});
           Object.assign(state.profile, parsed.profile || {});
+          Object.assign(state.calcDraft, parsed.calcDraft || {});
           Object.assign(state.streak, parsed.streak || {});
           state.mealLog = Array.isArray(parsed.mealLog) ? parsed.mealLog : [];
           if(parsed.ui && typeof parsed.ui === 'object'){
@@ -1006,6 +1022,46 @@
       }catch(err){
         logDebug('error', 'Failed to hydrate state.', { error: String(err) });
       }
+    }
+
+
+    function syncCalcDraftFromDom(){
+      const map = {
+        formula: 'inputFormula',
+        goal: 'inputGoal',
+        weight: 'inputWeight',
+        height: 'inputHeight',
+        age: 'inputAge',
+        gender: 'inputGender',
+        bodyFat: 'inputBodyFat',
+        activity: 'inputActivity',
+        weeklyPace: 'inputWeeklyPace',
+        goalPercent: 'goalPercent',
+        proteinPerLb: 'proteinPerLb',
+        goalWeight: 'inputGoalWeight'
+      };
+      let changed = false;
+      Object.entries(map).forEach(([key, id]) => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        const next = String(el.value ?? '');
+        if(state.calcDraft[key] !== next){
+          state.calcDraft[key] = next;
+          changed = true;
+        }
+      });
+      if(changed) persistState();
+    }
+
+    function attachCalcDraftPersistence(){
+      const ids = ['inputFormula','inputGoal','inputWeight','inputHeight','inputAge','inputGender','inputBodyFat','inputActivity','inputWeeklyPace','goalPercent','proteinPerLb','inputGoalWeight'];
+      ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        const handler = () => syncCalcDraftFromDom();
+        el.addEventListener('input', handler);
+        el.addEventListener('change', handler);
+      });
     }
 
     function mealsForDate(dateKey){
@@ -1083,71 +1139,71 @@
             <div class="field">
               <label for="inputFormula">Formula</label>
               <select id="inputFormula">
-                <option value="msj" selected>Mifflin-St Jeor (modern)</option>
-                <option value="hb">Harris-Benedict (legacy)</option>
-                <option value="katch">Katch-McArdle (needs body fat %)</option>
+                <option value="msj" ${state.calcDraft.formula === 'msj' ? 'selected' : ''}>Mifflin-St Jeor (modern)</option>
+                <option value="hb" ${state.calcDraft.formula === 'hb' ? 'selected' : ''}>Harris-Benedict (legacy)</option>
+                <option value="katch" ${state.calcDraft.formula === 'katch' ? 'selected' : ''}>Katch-McArdle (needs body fat %)</option>
               </select>
             </div>
             <div class="field">
               <label for="inputGoal">Goal</label>
               <select id="inputGoal">
-                <option value="maintain" selected>Maintain</option>
-                <option value="lose">Lose Fat</option>
-                <option value="gain">Gain Muscle</option>
+                <option value="maintain" ${state.calcDraft.goal === 'maintain' ? 'selected' : ''}>Maintain</option>
+                <option value="lose" ${state.calcDraft.goal === 'lose' ? 'selected' : ''}>Lose Fat</option>
+                <option value="gain" ${state.calcDraft.goal === 'gain' ? 'selected' : ''}>Gain Muscle</option>
               </select>
             </div>
             <div class="field">
               <label for="inputWeight">Weight (lbs)</label>
-              <input id="inputWeight" type="number" inputmode="decimal" min="70" placeholder="180">
+              <input id="inputWeight" type="number" inputmode="decimal" min="70" placeholder="180" value="${state.calcDraft.weight || state.profile.currentWeight || ''}">
             </div>
             <div class="field">
               <label for="inputHeight">Height (in)</label>
-              <input id="inputHeight" type="number" inputmode="decimal" min="48" placeholder="70">
+              <input id="inputHeight" type="number" inputmode="decimal" min="48" placeholder="70" value="${state.calcDraft.height || ''}">
             </div>
             <div class="field">
               <label for="inputGoalWeight">Goal weight (lbs)</label>
-              <input id="inputGoalWeight" type="number" inputmode="decimal" min="70" placeholder="170" value="${state.profile.goalWeight || ''}">
+              <input id="inputGoalWeight" type="number" inputmode="decimal" min="70" placeholder="170" value="${state.calcDraft.goalWeight || state.profile.goalWeight || ''}">
             </div>
             <div class="field">
               <label for="inputAge">Age</label>
-              <input id="inputAge" type="number" inputmode="numeric" min="8" max="99" placeholder="30">
+              <input id="inputAge" type="number" inputmode="numeric" min="8" max="99" placeholder="30" value="${state.calcDraft.age || ''}">
             </div>
             <div class="field">
               <label for="inputGender">Gender</label>
               <select id="inputGender">
-                <option value="male">Male</option>
-                <option value="female">Female</option>
+                <option value="male" ${state.calcDraft.gender === 'male' ? 'selected' : ''}>Male</option>
+                <option value="female" ${state.calcDraft.gender === 'female' ? 'selected' : ''}>Female</option>
               </select>
             </div>
             <div class="field" id="bodyFatWrap" style="display:none;">
               <label for="inputBodyFat">Body fat %</label>
-              <input id="inputBodyFat" type="number" inputmode="decimal" min="3" max="60" placeholder="18">
+              <input id="inputBodyFat" type="number" inputmode="decimal" min="3" max="60" placeholder="18" value="${state.calcDraft.bodyFat || ''}">
             </div>
             <div class="field">
               <label for="inputActivity">Activity</label>
               <select id="inputActivity">
-                <option value="1.2">Sedentary (desk job)</option>
-                <option value="1.375">Light (1–3 workouts/week)</option>
-                <option value="1.55">Moderate (3–5 workouts/week)</option>
-                <option value="1.725">Active (6–7 workouts/week)</option>
-                <option value="1.9">Very Active (physical job)</option>
+                <option value="1.2" ${state.calcDraft.activity === '1.2' ? 'selected' : ''}>Sedentary (desk job)</option>
+                <option value="1.375" ${state.calcDraft.activity === '1.375' ? 'selected' : ''}>Light (1–3 workouts/week)</option>
+                <option value="1.55" ${state.calcDraft.activity === '1.55' ? 'selected' : ''}>Moderate (3–5 workouts/week)</option>
+                <option value="1.725" ${state.calcDraft.activity === '1.725' ? 'selected' : ''}>Active (6–7 workouts/week)</option>
+                <option value="1.9" ${state.calcDraft.activity === '1.9' ? 'selected' : ''}>Very Active (physical job)</option>
               </select>
             </div>
             <div class="field">
               <label for="inputWeeklyPace">Goal pace (lb/week)</label>
               <select id="inputWeeklyPace">
-                <option value="0.5">0.5 lb / week</option>
-                <option value="1" selected>1.0 lb / week</option>
-                <option value="1.5">1.5 lb / week</option>
+                <option value="0.5" ${state.calcDraft.weeklyPace === '0.5' ? 'selected' : ''}>0.5 lb / week</option>
+                <option value="1" ${state.calcDraft.weeklyPace === '1' ? 'selected' : ''}>1.0 lb / week</option>
+                <option value="1.5" ${state.calcDraft.weeklyPace === '1.5' ? 'selected' : ''}>1.5 lb / week</option>
               </select>
             </div>
             <div class="slider-wrap">
               <div class="slider-row"><span>Calorie adjustment</span><span class="slider-value" id="goalPercentLabel">0%</span></div>
-              <input id="goalPercent" type="range" min="-25" max="20" step="1" value="0">
+              <input id="goalPercent" type="range" min="-25" max="20" step="1" value="${state.calcDraft.goalPercent || '0'}">
             </div>
             <div class="slider-wrap">
               <div class="slider-row"><span>Protein g/lb</span><span class="slider-value" id="proteinPerLbLabel">0.80</span></div>
-              <input id="proteinPerLb" type="range" min="0.7" max="1.1" step="0.05" value="0.8">
+              <input id="proteinPerLb" type="range" min="0.7" max="1.1" step="0.05" value="${state.calcDraft.proteinPerLb || '0.8'}">
             </div>
             <div class="button-row">
               <button class="primary-btn" type="submit">Set Macros</button>
@@ -1204,19 +1260,21 @@
       }
       formulaSel.addEventListener('change', () => {
         bodyFatWrap.style.display = formulaSel.value === 'katch' ? 'grid' : 'none';
+        syncCalcDraftFromDom();
       });
       goalSel.addEventListener('change', () => {
         if(goalSel.value === 'lose') goalPercent.value = -15;
         else if(goalSel.value === 'gain') goalPercent.value = 10;
         else goalPercent.value = 0;
         updateGoalPercentLabel();
+        syncCalcDraftFromDom();
       });
-      goalPercent.addEventListener('input', updateGoalPercentLabel);
-      proteinPerLb.addEventListener('input', updateProteinLabel);
-      if(goalWeightEl && state.profile.goalWeight) goalWeightEl.value = state.profile.goalWeight;
-      if(weeklyPaceEl && state.profile.weeklyPace) weeklyPaceEl.value = String(state.profile.weeklyPace);
+      goalPercent.addEventListener('input', () => { updateGoalPercentLabel(); syncCalcDraftFromDom(); });
+      proteinPerLb.addEventListener('input', () => { updateProteinLabel(); syncCalcDraftFromDom(); });
+      bodyFatWrap.style.display = formulaSel.value === 'katch' ? 'grid' : 'none';
       updateGoalPercentLabel();
       updateProteinLabel();
+      attachCalcDraftPersistence();
 
       document.getElementById('calcForm').addEventListener('submit', handleMacroCalculation);
       document.getElementById('manualGoalsBtn').addEventListener('click', saveManualGoals);
@@ -2342,6 +2400,7 @@
         totalsSelectedDay: totals,
         goals: state.goals,
         profile: state.profile,
+        calcDraft: state.calcDraft,
         streak: state.streak,
         userAgent: navigator.userAgent
       };
@@ -2466,6 +2525,7 @@
         ui: state.ui,
         goals: state.goals,
         profile: state.profile,
+        calcDraft: state.calcDraft,
         streak: state.streak,
         mealLog: state.mealLog
       }, null, 2))
