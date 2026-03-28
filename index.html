@@ -324,14 +324,19 @@
       white-space:nowrap;
       justify-self:end;
     }
-    @media(max-width:420px){
+    @media(max-width:520px){
       .date-row{
         grid-template-columns:56px minmax(0,1fr);
+        align-items:start;
+      }
+      #selectedDate{
+        grid-column:2;
       }
       #dateTodayBtn{
-        grid-column:2;
+        grid-column:1 / -1;
         justify-self:end;
         min-width:88px;
+        margin-top:2px;
       }
     }
     .summary-grid{
@@ -1626,11 +1631,8 @@
 
     async function scanBarcode(){
       if(state.ui.scanning) return;
-      if(isLikelyIPhoneSafari()){
-        logDebug('info', 'Using snapshot barcode flow for iPhone Safari.');
-        await scanBarcodeWithSnapshotLoop();
-        return;
-      }
+      const isiPhoneSafari = isLikelyIPhoneSafari();
+
       if(!('mediaDevices' in navigator)){
         showToast('Camera not supported on this device.');
         logDebug('warn', 'Barcode scan unavailable: no mediaDevices.');
@@ -1648,16 +1650,31 @@
           const wanted = ['ean_13','ean_8','upc_a','upc_e','code_128'];
           const formats = wanted.filter(f => supported.includes(f));
           if(formats.length){
+            logDebug('info', 'Using native barcode detector.', { formats, isiPhoneSafari });
             await scanBarcodeNative(formats);
             return;
           }
           logDebug('info', 'BarcodeDetector available but desired formats unsupported.', { supported });
         }catch(err){
-          logDebug('warn', 'BarcodeDetector setup failed. Falling back to Quagga.', { error: String(err) });
+          logDebug('warn', 'BarcodeDetector setup failed.', { error: String(err), isiPhoneSafari });
         }
       }
 
-      await scanBarcodeWithQuagga();
+      if(isiPhoneSafari){
+        showToast('Live scan is limited on iPhone Safari. Taking a photo works better.');
+        logDebug('info', 'Using photo barcode capture for iPhone Safari fallback.');
+        launchPhotoBarcodeCapture();
+        return;
+      }
+
+      try{
+        await scanBarcodeWithQuagga();
+        return;
+      }catch(err){
+        logDebug('warn', 'Quagga live scan failed. Falling back to snapshot loop.', { error: String(err) });
+      }
+
+      await scanBarcodeWithSnapshotLoop();
     }
 
     function isLikelyIPhoneSafari(){
