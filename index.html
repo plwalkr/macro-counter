@@ -882,8 +882,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.3.0';
-    const BUILD_DATE = '2026-03-28m';
+    const APP_VERSION = 'v1.3.1';
+    const BUILD_DATE = '2026-03-28n';
     const STORAGE_KEY = 'macroLegendState_v130';
 
     const lotrQuotes = [
@@ -1560,7 +1560,7 @@ const COMMON_FOOD_LIBRARY = [
       document.getElementById('exportDayBtn').addEventListener('click', () => exportCSV(false));
       document.getElementById('exportAllBtn').addEventListener('click', () => exportCSV(true));
       document.getElementById('clearDayBtn').addEventListener('click', clearSelectedDayMeals);
-      document.getElementById('printBtn').addEventListener('click', () => window.print());
+      document.getElementById('printBtn').addEventListener('click', handlePrintAction);
       attachAutocompleteEvents();
       attachMealTableActions();
     }
@@ -1764,15 +1764,92 @@ const COMMON_FOOD_LIBRARY = [
       return str;
     }
 
-    function downloadTextFile(content, filename, mimeType){
+    async function downloadTextFile(content, filename, mimeType){
       const blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      const file = new File([blob], filename, { type: blob.type || 'text/plain;charset=utf-8;' });
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+      const isGSA = /\bGSA\//i.test(navigator.userAgent || '');
+      const objectUrl = URL.createObjectURL(blob);
+      try{
+        if(navigator.share && navigator.canShare && navigator.canShare({ files:[file] })){
+          await navigator.share({ files:[file], title: filename, text: 'Exported from MacroLegend' });
+          showToast('Share sheet opened. Save the file there.');
+          logDebug('info', 'Export handed to share sheet.', { filename, size: file.size });
+          return true;
+        }
+      }catch(err){
+        logDebug('warn', 'Share-sheet export failed.', { filename, error: String(err) });
+      }
+      try{
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = filename;
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        if(isIOS || isGSA){
+          showToast('If no download appears, use Share or open in Safari.');
+        }
+        return true;
+      }catch(err){
+        logDebug('warn', 'Anchor download failed.', { filename, error: String(err) });
+      }finally{
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+      }
+      try{
+        const opened = window.open(objectUrl, '_blank', 'noopener');
+        if(opened){
+          showToast('Opened export in a new tab. Use Share to save it.');
+          logDebug('info', 'Export opened in new tab fallback.', { filename });
+          return true;
+        }
+      }catch(err){
+        logDebug('warn', 'New-tab export fallback failed.', { filename, error: String(err) });
+      }
+      showToast('Export blocked by this browser. Open in Safari for downloads.');
+      return false;
+    }
+
+    function buildPrintableHTML(){
+      const rows = mealsForDate(state.ui.selectedDate).sort((a,b) => (a.date || 0) - (b.date || 0));
+      const totals = totalsForDate(state.ui.selectedDate);
+      const dateLabel = prettyDateLabel(state.ui.selectedDate);
+      const rowHtml = rows.length ? rows.map(m => `
+<tr><td>${escapeHtml(m.name || '')}</td><td>${m.calories || 0}</td><td>${m.protein || 0}</td><td>${m.carbs || 0}</td><td>${m.fat || 0}</td></tr>`).join('') : '<tr><td colspan="5">No meals logged for this day.</td></tr>';
+      return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MacroLegend Print</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;padding:24px;color:#111}h1{margin:0 0 8px}p{margin:4px 0 16px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #bbb;padding:8px;text-align:left}th{background:#f2f2f2}.totals{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}.chip{border:1px solid #bbb;border-radius:999px;padding:6px 10px;font-weight:700}</style></head><body><h1>MacroLegend ${escapeHtml(APP_VERSION)}</h1><p>${escapeHtml(dateLabel)}</p><div class="totals"><span class="chip">Calories ${totals.calories}/${state.goals.calories}</span><span class="chip">Protein ${totals.protein}/${state.goals.protein}</span><span class="chip">Carbs ${totals.carbs}/${state.goals.carbs}</span><span class="chip">Fat ${totals.fat}/${state.goals.fat}</span></div><table><thead><tr><th>Meal</th><th>Cal</th><th>P</th><th>C</th><th>F</th></tr></thead><tbody>${rowHtml}</tbody></table></body></html>`;
+    }
+
+    async function handlePrintAction(){
+      try{
+        const html = buildPrintableHTML();
+        const blob = new Blob([html], { type:'text/html;charset=utf-8;' });
+        const file = new File([blob], `macrolegend_print_${state.ui.selectedDate}.html`, { type:'text/html;charset=utf-8;' });
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+        const isGSA = /\bGSA\//i.test(navigator.userAgent || '');
+        if(navigator.share && navigator.canShare && navigator.canShare({ files:[file] })){
+          await navigator.share({ files:[file], title:'MacroLegend Print', text:'Printable MacroLegend summary' });
+          showToast('Share sheet opened. Choose Print or Save to Files.');
+          logDebug('action', 'Print shared via share sheet.', { date: state.ui.selectedDate });
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, '_blank', 'noopener');
+        if(win){
+          showToast(isIOS || isGSA ? 'Opened printable page. Use Share or browser print there.' : 'Opened printable page.');
+          logDebug('action', 'Printable page opened.', { date: state.ui.selectedDate });
+          return;
+        }
+        window.print();
+        logDebug('action', 'window.print() invoked.', { date: state.ui.selectedDate });
+      }catch(err){
+        logDebug('error', 'Print action failed.', { error: String(err) });
+        showToast('Print blocked by this browser. Open in Safari or use Share.');
+      }
+    }
+
+    function escapeHtml(value){
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));
     }
 
     function syncHeaderVersion(){
