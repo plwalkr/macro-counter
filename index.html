@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -848,7 +849,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.1.4';
+    const APP_VERSION = 'v1.1.7';
     const BUILD_DATE = '2026-03-28e';
     const STORAGE_KEY = 'macroLegendState_v110';
 
@@ -1606,7 +1607,7 @@
 
     function syncHeaderVersion(){
       const chip = document.getElementById('headerVersionChip');
-      if(chip) chip.textContent = VERSION;
+      if(chip) chip.textContent = APP_VERSION;
     }
 
     function showToast(message){
