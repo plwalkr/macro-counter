@@ -865,8 +865,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
-    const APP_VERSION = 'v1.2.2';
-    const BUILD_DATE = '2026-03-28j';
+    const APP_VERSION = 'v1.2.3';
+    const BUILD_DATE = '2026-03-28k';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
@@ -1332,7 +1332,7 @@
 
       const maintenanceCalories = bmr * activity;
       let targetDailyAdjustment = 0;
-      let goalMode = goalSel.value;
+      let goalMode = document.getElementById('inputGoal')?.value || state.calcDraft.goal || 'maintain';
       let goalWeightDelta = 0;
 
       if(goalWeightLb){
@@ -1360,10 +1360,13 @@
       state.profile.currentWeight = weightLb;
       state.profile.goalWeight = goalWeightLb || 0;
       state.profile.weeklyPace = weeklyPace;
+      state.calcDraft.goal = goalMode;
+      state.calcDraft.weight = String(weightLb);
+      state.calcDraft.goalWeight = goalWeightLb ? String(goalWeightLb) : '';
+      state.calcDraft.weeklyPace = String(weeklyPace);
       persistState();
       showToast(`Goals updated (${formula.toUpperCase()})`);
       logDebug('action', 'Macro goals recalculated.', { formula, calories, protein, carbs, fat, maintenanceCalories: Math.round(maintenanceCalories), targetDailyAdjustment: Math.round(targetDailyAdjustment), manualAdjustment: Math.round(manualAdjustment), goalWeightLb, weeklyPace, goalWeightDelta, goalMode });
-      renderCurrentTab();
       setActiveTab('prog');
     }
 
@@ -1375,7 +1378,7 @@
       persistState();
       showToast('Manual goals saved.');
       logDebug('action', 'Manual goals updated.', state.goals);
-      renderCurrentTab();
+      setActiveTab('prog');
     }
 
     function resetGoalDefaults(){
