@@ -94,6 +94,32 @@
       line-height:1.1;
       text-shadow:0 4px 18px rgba(227,179,34,.22);
     }
+    
+    .version-chip{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      margin-left:10px;
+      padding:4px 9px;
+      border-radius:999px;
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      font-size:.4em;
+      font-weight:900;
+      letter-spacing:.08em;
+      vertical-align:middle;
+      color:#17304a;
+      background:linear-gradient(180deg,#ffffff,#edf4ff);
+      border:1px solid rgba(43,120,228,.26);
+      box-shadow:0 6px 18px rgba(22,32,54,.10);
+      white-space:nowrap;
+    }
+    body.ringmode .version-chip{
+      color:#201600;
+      background:linear-gradient(180deg,#ffe08a,#f5c04d);
+      border:1px solid rgba(255,220,120,.68);
+      box-shadow:0 6px 18px rgba(245,192,77,.25);
+    }
+
     .subtitle{
       margin-top:6px;
       font-size:.92rem;
@@ -286,12 +312,28 @@
     }
     .date-row{
       display:grid;
-      grid-template-columns:auto 1fr auto;
+      grid-template-columns:56px minmax(0,1fr) auto;
       gap:10px;
       align-items:center;
     }
     .date-input{
       min-height:50px;
+      min-width:0;
+    }
+    #dateTodayBtn{
+      min-width:96px;
+      white-space:nowrap;
+      justify-self:end;
+    }
+    @media(max-width:420px){
+      .date-row{
+        grid-template-columns:56px minmax(0,1fr);
+      }
+      #dateTodayBtn{
+        grid-column:2;
+        justify-self:end;
+        min-width:88px;
+      }
     }
     .summary-grid{
       display:grid;
@@ -730,7 +772,7 @@
     <header class="topbar">
       <div class="title-row">
         <div class="title-block">
-          <h1>MacroLegend</h1>
+          <h1>MacroLegend <span class="version-chip" id="headerVersionChip"></span></h1>
           <div class="subtitle">Mobile-first macro tracking with daily totals, better sanity checks, and a real debug system.</div>
         </div>
         <div class="theme-toggle">
@@ -803,7 +845,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script>
     const APP_VERSION = 'v1.1.4';
-    const BUILD_DATE = '2026-03-28d';
+    const BUILD_DATE = '2026-03-28e';
     const STORAGE_KEY = 'macroLegendState_v110';
 
     const lotrQuotes = [
@@ -1558,6 +1600,11 @@
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }
 
+    function syncHeaderVersion(){
+      const chip = document.getElementById('headerVersionChip');
+      if(chip) chip.textContent = VERSION;
+    }
+
     function showToast(message){
       const toast = document.createElement('div');
       toast.textContent = message;
@@ -1581,8 +1628,8 @@
     async function scanBarcode(){
       if(state.ui.scanning) return;
       if(isLikelyIPhoneSafari()){
-        logDebug('info', 'Using photo barcode flow for iPhone Safari.');
-        launchPhotoBarcodeCapture();
+        logDebug('info', 'Using snapshot barcode flow for iPhone Safari.');
+        await scanBarcodeWithSnapshotLoop();
         return;
       }
       if(!('mediaDevices' in navigator)){
@@ -1765,6 +1812,94 @@
       }
     }
 
+
+    async function scanBarcodeWithSnapshotLoop(){
+      const cancelBtn = document.getElementById('barcodeCancelBtn');
+      const closeBtn = document.getElementById('barcodeCloseBtn');
+      const stage = buildScannerOverlay('Center the barcode, hold steady, and wait a second');
+      const video = document.createElement('video');
+      video.id = 'snapshotBarcodeVideo';
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = true;
+      stage.appendChild(video);
+      cancelBtn.style.display = 'inline-flex';
+      closeBtn.style.display = 'inline-flex';
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal:'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio:false
+        });
+        state.ui.nativeStream = stream;
+        video.srcObject = stream;
+        await video.play();
+        state.ui.scanning = true;
+        state.ui.scanEngine = 'snapshot';
+        logDebug('action', 'Snapshot barcode scan started.');
+
+        const attemptDecode = () => {
+          if(!state.ui.scanning || state.ui.scanEngine !== 'snapshot') return;
+          const vw = video.videoWidth || 0;
+          const vh = video.videoHeight || 0;
+          if(!vw || !vh){
+            state.ui.scanTimer = setTimeout(attemptDecode, 500);
+            return;
+          }
+
+          // center crop to improve decode density on phones
+          const cropW = Math.floor(vw * 0.82);
+          const cropH = Math.floor(vh * 0.38);
+          const sx = Math.floor((vw - cropW) / 2);
+          const sy = Math.floor((vh - cropH) / 2);
+
+          canvas.width = cropW;
+          canvas.height = cropH;
+          ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
+
+          const src = canvas.toDataURL('image/jpeg', 0.92);
+          if(!window.Quagga || !Quagga.decodeSingle){
+            logDebug('error', 'Snapshot scan unavailable: Quagga decodeSingle missing.');
+            showToast('Scanner decode engine missing.');
+            stopBarcodeScan('decode_engine_missing');
+            return;
+          }
+
+          Quagga.decodeSingle({
+            src,
+            numOfWorkers: 0,
+            locate: true,
+            locator: { patchSize:'large', halfSample:false },
+            decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'code_128_reader'] }
+          }, (result) => {
+            if(!state.ui.scanning || state.ui.scanEngine !== 'snapshot') return;
+            const code = result && result.codeResult && result.codeResult.code;
+            if(code){
+              logDebug('action', 'Barcode decoded from snapshot loop.', { code });
+              stopBarcodeScan('decoded');
+              handleBarcodeCode(code);
+              return;
+            }
+            state.ui.scanTimer = setTimeout(attemptDecode, 850);
+          });
+        };
+
+        state.ui.scanTimer = setTimeout(attemptDecode, 650);
+      }catch(err){
+        logDebug('error', 'Snapshot barcode scan failed.', { error: String(err) });
+        showToast('Camera could not start.');
+        stopBarcodeScan('snapshot_start_failed');
+        throw err;
+      }
+    }
+
     async function scanBarcodeWithQuagga(){
       const cancelBtn = document.getElementById('barcodeCancelBtn');
       const closeBtn = document.getElementById('barcodeCloseBtn');
@@ -1838,6 +1973,7 @@
       const overlay = document.getElementById('barcodeOverlay');
       const cancelBtn = document.getElementById('barcodeCancelBtn');
       const closeBtn = document.getElementById('barcodeCloseBtn');
+      if(state.ui.scanTimer){ try{ clearTimeout(state.ui.scanTimer); }catch(_){ } state.ui.scanTimer = null; }
       if(state.ui.scanRaf){
         try{ cancelAnimationFrame(state.ui.scanRaf); }catch(_){ }
         state.ui.scanRaf = null;
